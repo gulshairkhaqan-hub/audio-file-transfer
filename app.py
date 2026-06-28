@@ -33,6 +33,9 @@ with st.container(border=True):
                 if response.status_code == 200:
                     data = response.json()
                     st.success(data["message"])
+                    # Section 1 only confirms the upload and lists the names.
+                    # Playing / downloading is done in Section 2 via "Get from Server".
+                    st.markdown("**Uploaded files:**")
                     for item in data.get("files", []):
                         st.write(f"• {item['name']}")
                 else:
@@ -45,7 +48,8 @@ st.divider()
 
 # ---------------- Section 2: View & Download ----------------
 with st.container(border=True):
-    st.subheader("Section 2 — Files on Server (Cloudinary)")
+    st.subheader("Section 2 — All Files on Server (Cloudinary)")
+    st.caption("Newest files appear first. Type in the box to quickly search by name.")
 
     st.button("Refresh File List")
 
@@ -59,8 +63,12 @@ with st.container(border=True):
                 st.info("No files on server yet. Upload something in Section 1.")
             else:
                 st.write(f"**{data['count']} file(s) stored on Cloudinary:**")
+                # Newest first (backend already sorts); selectbox lets user type to search.
                 url_map = {item["name"]: item["url"] for item in files_on_server}
-                selected = st.selectbox("Choose a file to download / play", list(url_map.keys()))
+                selected = st.selectbox(
+                    "Search / choose a file to download or play",
+                    list(url_map.keys()),
+                )
 
                 if st.button("Get from Server"):
                     file_url = url_map[selected]

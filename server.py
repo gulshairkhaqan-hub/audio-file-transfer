@@ -55,12 +55,19 @@ async def list_files():
             prefix=f"{UPLOAD_FOLDER}/",
             max_results=100,
         )
+        # Sort newest first so the most recently uploaded files appear on top.
+        resources = sorted(
+            res.get("resources", []),
+            key=lambda r: r.get("created_at", ""),
+            reverse=True,
+        )
         files = [
             {
                 "name": f"{r['public_id'].split('/')[-1]}.{r['format']}",
                 "url": r["secure_url"],
+                "uploaded_at": r.get("created_at", ""),
             }
-            for r in res.get("resources", [])
+            for r in resources
         ]
         return {"count": len(files), "files": files}
     except Exception as e:
