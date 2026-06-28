@@ -17,7 +17,6 @@ def home():
 
 @app.post("/receive")
 async def receive_files(files: List[UploadFile] = File(...)):
-    """Accept one or more audio files and save them all."""
     saved = []
     for file in files:
         save_path = os.path.join(UPLOAD_DIR, os.path.basename(file.filename))
@@ -33,14 +32,12 @@ async def receive_files(files: List[UploadFile] = File(...)):
 
 @app.get("/files")
 async def list_files():
-    """Return the list of all files currently stored on the server."""
     files = sorted(os.listdir(UPLOAD_DIR)) if os.path.exists(UPLOAD_DIR) else []
     return {"count": len(files), "files": files}
 
 
 @app.get("/send/{filename}")
 async def send_file(filename: str):
-    """Send a specific file back by its name."""
     safe_name = os.path.basename(filename)
     file_path = os.path.join(UPLOAD_DIR, safe_name)
 
