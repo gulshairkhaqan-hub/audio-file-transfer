@@ -8,7 +8,6 @@ import cloudinary.api
 
 app = FastAPI(title="Audio Transfer Server")
 
-# Cloudinary credentials are read from environment variables (kept secret, not in code)
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
@@ -16,7 +15,6 @@ cloudinary.config(
     secure=True,
 )
 
-# All audio files are stored inside this Cloudinary folder
 UPLOAD_FOLDER = "audio_uploads"
 
 
@@ -27,15 +25,16 @@ def home():
 
 @app.post("/receive")
 async def receive_files(files: List[UploadFile] = File(...)):
-    """Upload one or more audio files to Cloudinary (permanent storage)."""
     saved = []
     for file in files:
+        # Use the original file name (without extension) as the Cloudinary public_id
+        # so each file keeps its real name and different files don't overwrite each other.
+        base_name = os.path.splitext(os.path.basename(file.filename))[0]
         result = cloudinary.uploader.upload(
             file.file,
             resource_type="video",      # audio is handled under 'video' in Cloudinary
             folder=UPLOAD_FOLDER,
-            use_filename=True,
-            unique_filename=False,
+            public_id=base_name,
             overwrite=True,
         )
         name = f"{result['original_filename']}.{result['format']}"
@@ -49,7 +48,6 @@ async def receive_files(files: List[UploadFile] = File(...)):
 
 @app.get("/files")
 async def list_files():
-    """List all audio files currently stored in Cloudinary."""
     try:
         res = cloudinary.api.resources(
             resource_type="video",
