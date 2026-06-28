@@ -27,12 +27,12 @@ def home():
 async def receive_files(files: List[UploadFile] = File(...)):
     saved = []
     for file in files:
+        base_name = os.path.splitext(os.path.basename(file.filename))[0]
         result = cloudinary.uploader.upload(
             file.file,
             resource_type="video",
             folder=UPLOAD_FOLDER,
-            use_filename=True,
-            unique_filename=False,
+            public_id=base_name,
             overwrite=True,
         )
         name = f"{result['original_filename']}.{result['format']}"
