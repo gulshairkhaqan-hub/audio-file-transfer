@@ -1,13 +1,23 @@
-from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import FileResponse, JSONResponse
-from typing import List
-import shutil
 import os
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import JSONResponse
+from typing import List
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
 
 app = FastAPI(title="Audio Transfer Server")
 
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+# Cloudinary credentials are read from environment variables (kept secret, not in code)
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+    secure=True,
+)
+
+# All audio files are stored inside this Cloudinary folder
+UPLOAD_FOLDER = "audio_uploads"
 
 
 @app.get("/")
@@ -17,44 +27,46 @@ def home():
 
 @app.post("/receive")
 async def receive_files(files: List[UploadFile] = File(...)):
-    """Accept one or more audio files and save them all."""
+    """Upload one or more audio files to Cloudinary (permanent storage)."""
     saved = []
     for file in files:
-        save_path = os.path.join(UPLOAD_DIR, os.path.basename(file.filename))
-        with open(save_path, "wb") as f:
-            shutil.copyfileobj(file.file, f)
-        saved.append(file.filename)
+        result = cloudinary.uploader.upload(
+            file.file,
+            resource_type="video",      # audio is handled under 'video' in Cloudinary
+            folder=UPLOAD_FOLDER,
+            use_filename=True,
+            unique_filename=False,
+            overwrite=True,
+        )
+        name = f"{result['original_filename']}.{result['format']}"
+        saved.append({"name": name, "url": result["secure_url"]})
 
     return {
-        "message": f"{len(saved)} file(s) received and saved successfully ",
+        "message": f"{len(saved)} file(s) uploaded to Cloudinary successfully ",
         "files": saved,
     }
 
 
 @app.get("/files")
 async def list_files():
-    """Return the list of all files currently stored on the server."""
-    files = sorted(os.listdir(UPLOAD_DIR)) if os.path.exists(UPLOAD_DIR) else []
-    return {"count": len(files), "files": files}
-
-
-@app.get("/send/{filename}")
-async def send_file(filename: str):
-    """Send a specific file back by its name."""
-    safe_name = os.path.basename(filename)
-    file_path = os.path.join(UPLOAD_DIR, safe_name)
-
-    if os.path.exists(file_path):
-        return FileResponse(
-            file_path,
-            media_type="audio/wav",
-            filename=safe_name,
-            content_disposition_type="inline",
+    """List all audio files currently stored in Cloudinary."""
+    try:
+        res = cloudinary.api.resources(
+            resource_type="video",
+            type="upload",
+            prefix=f"{UPLOAD_FOLDER}/",
+            max_results=100,
         )
-    return JSONResponse(
-        status_code=404,
-        content={"error": f"File '{safe_name}' not found on server."},
-    )
+        files = [
+            {
+                "name": f"{r['public_id'].split('/')[-1]}.{r['format']}",
+                "url": r["secure_url"],
+            }
+            for r in res.get("resources", [])
+        ]
+        return {"count": len(files), "files": files}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 if __name__ == "__main__":

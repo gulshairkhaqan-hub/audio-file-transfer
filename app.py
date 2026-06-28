@@ -6,7 +6,7 @@ SERVER_URL = os.getenv("SERVER_URL", "http://127.0.0.1:8000")
 
 st.set_page_config(page_title="Audio File Transfer")
 st.title("Audio File Transfer")
-st.caption("Upload audio files to the server and download them back · FastAPI + Streamlit")
+st.caption("Upload audio files to Cloudinary via the server and download them back · FastAPI + Streamlit")
 
 st.divider()
 
@@ -33,8 +33,8 @@ with st.container(border=True):
                 if response.status_code == 200:
                     data = response.json()
                     st.success(data["message"])
-                    for name in data.get("files", []):
-                        st.write(f"• {name}")
+                    for item in data.get("files", []):
+                        st.write(f"• {item['name']}")
                 else:
                     st.error(f"Upload failed: {response.text}")
             except requests.exceptions.ConnectionError:
@@ -45,10 +45,9 @@ st.divider()
 
 # ---------------- Section 2: View & Download ----------------
 with st.container(border=True):
-    st.subheader("Section 2 — Files on Server")
+    st.subheader("Section 2 — Files on Server (Cloudinary)")
 
-    if st.button("Refresh File List"):
-        st.session_state["refresh"] = True
+    st.button("Refresh File List")
 
     try:
         list_resp = requests.get(f"{SERVER_URL}/files")
@@ -59,11 +58,13 @@ with st.container(border=True):
             if not files_on_server:
                 st.info("No files on server yet. Upload something in Section 1.")
             else:
-                st.write(f"**{data['count']} file(s) stored on server:**")
-                selected = st.selectbox("Choose a file to download / play", files_on_server)
+                st.write(f"**{data['count']} file(s) stored on Cloudinary:**")
+                url_map = {item["name"]: item["url"] for item in files_on_server}
+                selected = st.selectbox("Choose a file to download / play", list(url_map.keys()))
 
                 if st.button("Get from Server"):
-                    file_resp = requests.get(f"{SERVER_URL}/send/{selected}")
+                    file_url = url_map[selected]
+                    file_resp = requests.get(file_url)
                     if file_resp.status_code == 200:
                         size_kb = len(file_resp.content) // 1024
                         st.success(f"'{selected}' received ({size_kb} KB)")
@@ -73,9 +74,10 @@ with st.container(border=True):
                             data=file_resp.content,
                             file_name=selected,
                         )
+                        st.caption(f"Permanent link: {file_url}")
                     else:
-                        st.error(f"Could not get file: {file_resp.text}")
+                        st.error("Could not download the file from Cloudinary.")
         else:
-            st.error("Could not fetch file list from server.")
+            st.error(f"Could not fetch file list from server. {list_resp.text}")
     except requests.exceptions.ConnectionError:
         st.error("Server se connect nahi huwa. Kya server chal raha hai?")
