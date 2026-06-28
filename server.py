@@ -37,7 +37,7 @@ async def receive_files(files: List[UploadFile] = File(...)):
             public_id=base_name,
             overwrite=True,
         )
-        name = f"{result['original_filename']}.{result['format']}"
+        name = f"{base_name}.{result['format']}"
         saved.append({"name": name, "url": result["secure_url"]})
 
     return {
