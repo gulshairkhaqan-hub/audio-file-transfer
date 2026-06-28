@@ -35,7 +35,7 @@ async def receive_files(files: List[UploadFile] = File(...)):
             public_id=base_name,
             overwrite=True,
         )
-        name = f"{result['original_filename']}.{result['format']}"
+        name = f"{base_name}.{result['format']}"
         saved.append({"name": name, "url": result["secure_url"]})
 
     return {
@@ -53,12 +53,18 @@ async def list_files():
             prefix=f"{UPLOAD_FOLDER}/",
             max_results=100,
         )
+        resources = sorted(
+            res.get("resources", []),
+            key=lambda r: r.get("created_at", ""),
+            reverse=True,
+        )
         files = [
             {
                 "name": f"{r['public_id'].split('/')[-1]}.{r['format']}",
                 "url": r["secure_url"],
+                "uploaded_at": r.get("created_at", ""),
             }
-            for r in res.get("resources", [])
+            for r in resources
         ]
         return {"count": len(files), "files": files}
     except Exception as e:
