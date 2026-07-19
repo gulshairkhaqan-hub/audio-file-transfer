@@ -4,3 +4,5 @@ python-multipart
 streamlit
 requests
 cloudinary
+pymongo[srv]
+python-dotenv

@@ -1,6 +1,10 @@
 import os
 import streamlit as st
 import requests
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
 
 SERVER_URL = os.getenv("SERVER_URL", "http://127.0.0.1:8000")
 
