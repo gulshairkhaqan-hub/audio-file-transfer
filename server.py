@@ -49,7 +49,7 @@ async def receive_files(files: List[UploadFile] = File(...)):
             resource_type="video",
             folder=UPLOAD_FOLDER,
             public_id=base_name,
-            overwrite=True,
+            overwrite=False,
         )
 
         name = f"{base_name}.{result['format']}"
