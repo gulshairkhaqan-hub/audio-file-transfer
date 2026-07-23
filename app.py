@@ -77,7 +77,7 @@ with st.container(border=True):
                 col1, col2 = st.columns(2)
 
                 with col1:
-                    if st.button("Get from Server"):
+                    if st.button("Get from Server", use_container_width=True):
                         file_url = url_map[selected]
                         file_resp = requests.get(file_url)
                         if file_resp.status_code == 200:
@@ -88,13 +88,14 @@ with st.container(border=True):
                                 "Save File Locally",
                                 data=file_resp.content,
                                 file_name=selected,
+                                use_container_width=True,
                             )
                             st.caption(f"Permanent link: {file_url}")
                         else:
                             st.error("Could not download the file from Cloudinary.")
 
                 with col2:
-                    if st.button("Delete File", type="secondary"):
+                    if st.button("Delete File", type="secondary", use_container_width=True):
                         st.session_state["confirm_delete"] = selected
 
                 # Confirmation step
@@ -104,7 +105,7 @@ with st.container(border=True):
                     )
                     yes_col, no_col = st.columns(2)
                     with yes_col:
-                        if st.button("Yes, delete", type="primary"):
+                        if st.button("Yes, delete", type="primary", use_container_width=True):
                             try:
                                 del_resp = requests.delete(
                                     f"{SERVER_URL}/files/{selected}"
@@ -120,7 +121,7 @@ with st.container(border=True):
                             except requests.exceptions.ConnectionError:
                                 st.error("Server se connect nahi huwa.")
                     with no_col:
-                        if st.button("Cancel"):
+                        if st.button("Cancel", use_container_width=True):
                             st.session_state.pop("confirm_delete", None)
                             st.rerun()
 
