@@ -100,21 +100,8 @@ with st.container(border=True):
 
                 # Confirmation step
                 if st.session_state.get("confirm_delete") == selected:
-                    st.markdown(
-                        f"""
-                        <div style="
-                            background-color: #2d0a0a;
-                            border: 1px solid #ff4b4b;
-                            border-radius: 0.5rem;
-                            padding: 0.75rem 1rem;
-                            color: #ff4b4b;
-                            font-size: 0.95rem;
-                            margin-bottom: 0.5rem;
-                        ">
-                            🗑️ Delete "<strong>{selected}</strong>" from Cloudinary and history? This can't be undone.
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
+                    st.warning(
+                        f'Delete "{selected}" from Cloudinary and history? This can\'t be undone.'
                     )
                     yes_col, no_col = st.columns(2)
                     with yes_col:
