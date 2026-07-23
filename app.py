@@ -103,11 +103,11 @@ with st.container(border=True):
                     st.markdown(
                         f"""
                         <div style="
-                            background-color: #4a0000;
-                            border: 1px solid #7f1d1d;
+                            background-color: #2d0a0a;
+                            border: 1px solid #ff4b4b;
                             border-radius: 0.5rem;
                             padding: 0.75rem 1rem;
-                            color: #fca5a5;
+                            color: #ff4b4b;
                             font-size: 0.95rem;
                             margin-bottom: 0.5rem;
                         ">
