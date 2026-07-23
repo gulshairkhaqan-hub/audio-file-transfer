@@ -101,6 +101,30 @@ async def list_files():
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
+@app.delete("/files/{filename}")
+async def delete_file(filename: str):
+    try:
+        base_name = os.path.splitext(filename)[0]
+        public_id = f"{UPLOAD_FOLDER}/{base_name}"
+
+        # Step 1: Delete from Cloudinary first
+        result = cloudinary.uploader.destroy(public_id, resource_type="video")
+
+        if result.get("result") not in ("ok", "not found"):
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"Cloudinary deletion failed: {result}"},
+            )
+
+        # Step 2: Only delete from MongoDB if Cloudinary succeeded
+        uploads_collection.delete_one({"name": filename})
+
+        return {"message": f"'{filename}' deleted successfully."}
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
 @app.get("/history")
 async def upload_history():
     """MongoDB se upload history return karo"""

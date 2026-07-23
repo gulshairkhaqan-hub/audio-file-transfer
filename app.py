@@ -74,21 +74,56 @@ with st.container(border=True):
                     list(url_map.keys()),
                 )
 
-                if st.button("Get from Server"):
-                    file_url = url_map[selected]
-                    file_resp = requests.get(file_url)
-                    if file_resp.status_code == 200:
-                        size_kb = len(file_resp.content) // 1024
-                        st.success(f"'{selected}' received ({size_kb} KB)")
-                        st.audio(file_resp.content)
-                        st.download_button(
-                            "Save File Locally",
-                            data=file_resp.content,
-                            file_name=selected,
-                        )
-                        st.caption(f"Permanent link: {file_url}")
-                    else:
-                        st.error("Could not download the file from Cloudinary.")
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    if st.button("Get from Server"):
+                        file_url = url_map[selected]
+                        file_resp = requests.get(file_url)
+                        if file_resp.status_code == 200:
+                            size_kb = len(file_resp.content) // 1024
+                            st.success(f"'{selected}' received ({size_kb} KB)")
+                            st.audio(file_resp.content)
+                            st.download_button(
+                                "Save File Locally",
+                                data=file_resp.content,
+                                file_name=selected,
+                            )
+                            st.caption(f"Permanent link: {file_url}")
+                        else:
+                            st.error("Could not download the file from Cloudinary.")
+
+                with col2:
+                    if st.button("Delete File", type="secondary"):
+                        st.session_state["confirm_delete"] = selected
+
+                # Confirmation step
+                if st.session_state.get("confirm_delete") == selected:
+                    st.warning(
+                        f'Delete "{selected}" from Cloudinary and history? This can\'t be undone.'
+                    )
+                    yes_col, no_col = st.columns(2)
+                    with yes_col:
+                        if st.button("Yes, delete", type="primary"):
+                            try:
+                                del_resp = requests.delete(
+                                    f"{SERVER_URL}/files/{selected}"
+                                )
+                                if del_resp.status_code == 200:
+                                    st.success(del_resp.json().get("message", "Deleted."))
+                                    st.session_state.pop("confirm_delete", None)
+                                    st.rerun()
+                                else:
+                                    st.error(
+                                        f"Delete failed: {del_resp.json().get('error', del_resp.text)}"
+                                    )
+                            except requests.exceptions.ConnectionError:
+                                st.error("Server se connect nahi huwa.")
+                    with no_col:
+                        if st.button("Cancel"):
+                            st.session_state.pop("confirm_delete", None)
+                            st.rerun()
+
         else:
             st.error(f"Could not fetch file list from server. {list_resp.text}")
     except requests.exceptions.ConnectionError:
