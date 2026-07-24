@@ -12,8 +12,7 @@ COPY . .
 # Make the uploads folder writable (Hugging Face runs as non-root user)
 RUN mkdir -p /app/uploads && chmod -R 777 /app/uploads
 
-# Hugging Face Spaces expects the app on port 7860
-EXPOSE 7860
+# Render provides the PORT env variable dynamically
+EXPOSE 10000
 
-# Start the FastAPI server
-CMD uvicorn server:app --host 0.0.0.0 --port 7860
+CMD uvicorn server:app --host 0.0.0.0 --port ${PORT:-10000}
