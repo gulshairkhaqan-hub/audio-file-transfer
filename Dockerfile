@@ -13,6 +13,6 @@ COPY . .
 RUN mkdir -p /app/uploads && chmod -R 777 /app/uploads
 
 # Render provides the PORT env variable dynamically
-EXPOSE 10000
+EXPOSE 7860
 
-CMD uvicorn server:app --host 0.0.0.0 --port ${PORT:-10000}
+CMD uvicorn server:app --host 0.0.0.0 --port ${PORT:-7860}
