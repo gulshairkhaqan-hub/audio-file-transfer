@@ -9,8 +9,21 @@ load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
 SERVER_URL = os.getenv("SERVER_URL", "http://127.0.0.1:8000")
 
 st.set_page_config(page_title="Audio File Transfer")
-st.title("Audio File Transfer")
-st.caption("Upload audio files to Cloudinary via the server and download them back · FastAPI + Streamlit")
+
+# ── Protected page — login ke bina access nahi ──────────────────────────────
+if not st.session_state.get("logged_in"):
+    st.switch_page("pages/1_login.py")
+
+# ── Header — user name + logout ─────────────────────────────────────────────
+col_title, col_logout = st.columns([4, 1])
+with col_title:
+    st.title("Audio File Transfer")
+    st.caption("Upload audio files to Cloudinary via the server and download them back · FastAPI + Streamlit")
+with col_logout:
+    st.write(f"👤 {st.session_state.get('user_name', '')}")
+    if st.button("Logout", use_container_width=True):
+        st.session_state.clear()
+        st.switch_page("pages/1_login.py")
 
 st.divider()
 
@@ -33,7 +46,11 @@ with st.container(border=True):
                 ("files", (f.name, f.getvalue(), f.type)) for f in audio_files
             ]
             try:
-                response = requests.post(f"{SERVER_URL}/receive", files=files_payload)
+                response = requests.post(
+                    f"{SERVER_URL}/receive",
+                    files=files_payload,
+                    data={"user_email": st.session_state.get("user_email", "")},
+                )
                 if response.status_code == 200:
                     data = response.json()
                     st.success(data["message"])

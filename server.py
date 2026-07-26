@@ -1,11 +1,12 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-
+import bcrypt
+from pydantic import BaseModel
 # Explicit path so it works regardless of working directory
 load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
 
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from typing import List
 from datetime import datetime, timezone
@@ -28,17 +29,62 @@ cloudinary.config(
 mongo_client = MongoClient(os.getenv("MONGODB_URI"))
 db = mongo_client["audio_transfer"]
 uploads_collection = db["uploads"]
-
+users_collection = db["users"]
 UPLOAD_FOLDER = "audio_uploads"
+
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
 
 
 @app.get("/")
 def home():
     return {"status": "Server is running"}
 
+@app.post("/register")
+async def register(data: RegisterRequest):
+    # Normalize email
+    email = data.email.lower().strip()
+
+    if users_collection.find_one({"email": email}):
+        return JSONResponse(status_code=400, content={"error": "Email already registered."})
+
+    hashed = bcrypt.hashpw(data.password.encode("utf-8"), bcrypt.gensalt())
+
+    users_collection.insert_one({
+        "name": data.name,
+        "email": email,
+        "password": hashed.decode("utf-8"),
+    })
+
+    return {"message": "Registered successfully!"}
+
+
+@app.post("/login")
+async def login(data: LoginRequest):
+    # Normalize email
+    email = data.email.lower().strip()
+
+    user = users_collection.find_one({"email": email})
+    if not user:
+        return JSONResponse(status_code=404, content={"error": "User not found."})
+
+    if not bcrypt.checkpw(data.password.encode("utf-8"), user["password"].encode("utf-8")):
+        return JSONResponse(status_code=401, content={"error": "Wrong password."})
+
+    return {
+        "message": f"Welcome back, {user['name']}!",
+        "name": user["name"],
+        "email": email,
+    }
 
 @app.post("/receive")
-async def receive_files(files: List[UploadFile] = File(...)):
+async def receive_files(files: List[UploadFile] = File(...), user_email: str = Form("")):
     saved = []
     for file in files:
         base_name = os.path.splitext(os.path.basename(file.filename))[0]
@@ -55,12 +101,13 @@ async def receive_files(files: List[UploadFile] = File(...)):
         name = f"{base_name}.{result['format']}"
         url  = result["secure_url"]
 
-        # Save record to MongoDB
+        # Save record to MongoDB with user_email for ownership tracking
         uploads_collection.update_one(
-            {"name": name},
+            {"name": name, "user_email": user_email},
             {"$set": {
                 "name": name,
                 "url": url,
+                "user_email": user_email,
                 "uploaded_at": datetime.now(timezone.utc),
             }},
             upsert=True,
@@ -76,6 +123,8 @@ async def receive_files(files: List[UploadFile] = File(...)):
 
 @app.get("/files")
 async def list_files():
+    # Cloudinary listing is global — file ownership is tracked via MongoDB uploads_collection,
+    # not Cloudinary. Use /history with user_email param for per-user file records.
     try:
         res = cloudinary.api.resources(
             resource_type="video",
@@ -101,36 +150,13 @@ async def list_files():
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@app.delete("/files/{filename}")
-async def delete_file(filename: str):
-    try:
-        base_name = os.path.splitext(filename)[0]
-        public_id = f"{UPLOAD_FOLDER}/{base_name}"
-
-        # Step 1: Delete from Cloudinary first
-        result = cloudinary.uploader.destroy(public_id, resource_type="video")
-
-        if result.get("result") not in ("ok", "not found"):
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"Cloudinary deletion failed: {result}"},
-            )
-
-        # Step 2: Only delete from MongoDB if Cloudinary succeeded
-        uploads_collection.delete_one({"name": filename})
-
-        return {"message": f"'{filename}' deleted successfully."}
-
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
-
 @app.get("/history")
-async def upload_history():
-    """MongoDB se upload history return karo"""
+async def upload_history(user_email: str = ""):
+    """MongoDB se upload history return karo — user_email se filter hoga"""
     try:
+        query = {"user_email": user_email} if user_email else {}
         records = list(
-            uploads_collection.find({}, {"_id": 0})
+            uploads_collection.find(query, {"_id": 0})
             .sort("uploaded_at", -1)
             .limit(100)
         )
