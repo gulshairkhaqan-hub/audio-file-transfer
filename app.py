@@ -69,22 +69,23 @@ st.divider()
 
 # ---------------- Section 2: View & Download ----------------
 with st.container(border=True):
-    st.subheader("Section 2 — All Files on Server (Cloudinary)")
+    st.subheader("Your Uploaded Files")
     st.caption("Newest files appear first. Type in the box to quickly search by name.")
 
     st.button("Refresh File List")
 
     try:
-        list_resp = requests.get(f"{SERVER_URL}/files")
+        user_email = st.session_state.get("user_email", "")
+        list_resp = requests.get(f"{SERVER_URL}/history", params={"user_email": user_email})
         if list_resp.status_code == 200:
             data = list_resp.json()
-            files_on_server = data.get("files", [])
+            files_on_server = data.get("history", [])
 
             if not files_on_server:
-                st.info("No files on server yet. Upload something in Section 1.")
+                st.info("No files uploaded yet. Upload something in Section 1.")
             else:
-                st.write(f"**{data['count']} file(s) stored on Cloudinary:**")
-                # Newest first (backend already sorts); selectbox lets user type to search.
+                st.write(f"**{data['count']} file(s) uploaded by you:**")
+                # Newest first (MongoDB already sorts); selectbox lets user type to search.
                 url_map = {item["name"]: item["url"] for item in files_on_server}
                 selected = st.selectbox(
                     "Search / choose a file to download or play",
