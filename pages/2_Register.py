@@ -7,9 +7,9 @@ from pathlib import Path
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env", override=True)
 SERVER_URL = os.getenv("SERVER_URL", "http://127.0.0.1:8000")
 
-st.set_page_config(page_title="Login", layout="centered")
+st.set_page_config(page_title="Register", layout="centered")
 
-# Hide sidebar on login page
+# Hide sidebar on register page
 st.markdown("""
     <style>
         [data-testid="stSidebar"] { display: none; }
@@ -21,35 +21,33 @@ st.markdown("""
 if st.session_state.get("logged_in"):
     st.switch_page("app.py")
 
-st.title(" Login")
-st.caption("Don't have an account? [Sign up here](/Register)")
+st.title(" Register")
+st.caption("Already have an account? [Login here](/login)")
 
 st.divider()
 
-with st.form("login_form"):
+with st.form("register_form"):
+    name     = st.text_input("Full Name", placeholder="Ali Ahmed")
     email    = st.text_input("Email", placeholder="you@example.com")
     password = st.text_input("Password", type="password", placeholder="••••••••")
-    submitted = st.form_submit_button("Login", use_container_width=True, type="primary")
+    submitted = st.form_submit_button("Create Account", use_container_width=True, type="primary")
 
 if submitted:
-    if not email or not password:
+    if not name or not email or not password:
         st.warning("Please fill in all fields.")
+    elif len(password) < 6:
+        st.warning("Password must be at least 6 characters.")
     else:
         try:
             resp = requests.post(
-                f"{SERVER_URL}/login",
-                json={"email": email, "password": password},
+                f"{SERVER_URL}/register",
+                json={"name": name, "email": email, "password": password},
                 timeout=10,
             )
             if resp.status_code == 200:
-                data = resp.json()
-                # Session me save karo
-                st.session_state["logged_in"] = True
-                st.session_state["user_name"] = data.get("name", email)
-                st.session_state["user_email"] = data.get("email", email.lower().strip())
-                st.success(data["message"])
-                st.switch_page("app.py")
+                st.success("Account created! Please login.")
+                st.switch_page("pages/1_login.py")
             else:
-                st.error(resp.json().get("error", "Login failed."))
+                st.error(resp.json().get("error", "Registration failed."))
         except requests.exceptions.ConnectionError:
             st.error("Server se connect nahi huwa.")
