@@ -7,22 +7,12 @@ from pathlib import Path
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env", override=True)
 SERVER_URL = os.getenv("SERVER_URL", "http://127.0.0.1:8000")
 
-st.set_page_config(page_title="Login", layout="centered")
-
-# Hide sidebar on login page
-st.markdown("""
-    <style>
-        [data-testid="stSidebar"] { display: none; }
-        [data-testid="collapsedControl"] { display: none; }
-    </style>
-""", unsafe_allow_html=True)
-
 # Agar pehle se logged in hai toh main app pe bhejo
 if st.session_state.get("logged_in"):
     st.switch_page("app.py")
 
-st.title(" Login")
-st.caption("Don't have an account? [Sign up here](/Register)")
+st.title("🔐 Login")
+st.caption("Don't have an account? [Sign up here](/Sign_Up)")
 
 st.divider()
 
@@ -43,7 +33,6 @@ if submitted:
             )
             if resp.status_code == 200:
                 data = resp.json()
-                # Session me save karo
                 st.session_state["logged_in"] = True
                 st.session_state["user_name"] = data.get("name", email)
                 st.session_state["user_email"] = data.get("email", email.lower().strip())

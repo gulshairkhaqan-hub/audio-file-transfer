@@ -7,22 +7,12 @@ from pathlib import Path
 load_dotenv(dotenv_path=Path(__file__).parent.parent / ".env", override=True)
 SERVER_URL = os.getenv("SERVER_URL", "http://127.0.0.1:8000")
 
-st.set_page_config(page_title="Register", layout="centered")
-
-# Hide sidebar on register page
-st.markdown("""
-    <style>
-        [data-testid="stSidebar"] { display: none; }
-        [data-testid="collapsedControl"] { display: none; }
-    </style>
-""", unsafe_allow_html=True)
-
 # Agar pehle se logged in hai toh main app pe bhejo
 if st.session_state.get("logged_in"):
     st.switch_page("app.py")
 
-st.title(" Register")
-st.caption("Already have an account? [Login here](/login)")
+st.title("📝 Sign Up")
+st.caption("Already have an account? [Login here](/Login)")
 
 st.divider()
 

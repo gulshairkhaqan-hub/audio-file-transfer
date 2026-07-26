@@ -8,8 +8,6 @@ load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
 
 SERVER_URL = os.getenv("SERVER_URL", "http://127.0.0.1:8000")
 
-st.set_page_config(page_title="Audio File Transfer")
-
 # ── Protected page — login ke bina access nahi ──────────────────────────────
 if not st.session_state.get("logged_in"):
     st.switch_page("pages/1_login.py")
