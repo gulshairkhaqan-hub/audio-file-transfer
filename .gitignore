@@ -1,23 +1,31 @@
-# Environment variables / secrets
+# ── Secrets / env ──────────────────────────────────────────
 .env
+backend/.env
+.env.local
+frontend/.env.local
 
-# Virtual environment
+# ── Python (backend) ───────────────────────────────────────
 .venv/
 venv/
 env/
-
-# Python cache
 __pycache__/
 *.pyc
 *.pyo
-
-# Uploaded audio files (should not go to repo)
 uploads/
 
-# Streamlit secrets (local)
+# ── Node / Next.js (frontend) ──────────────────────────────
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+.vercel
+
+# ── Streamlit (legacy, local) ──────────────────────────────
 .streamlit/secrets.toml
 
-# OS / editor junk
+# ── OS / editor junk ───────────────────────────────────────
 .DS_Store
 Thumbs.db
 .vscode/

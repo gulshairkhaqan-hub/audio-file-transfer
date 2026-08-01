@@ -1,0 +1,51 @@
+<svg width="520" height="140" viewBox="0 0 520 140" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="VoxClone">
+  <defs>
+    <linearGradient id="vc-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <filter id="vc-glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <style>
+      /* Bars gently pulse like a live waveform. Each bar scales vertically
+         around its own center, staggered for an equalizer feel. */
+      .vc-bar {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: vc-pulse 1.6s ease-in-out infinite;
+      }
+      .vc-bar:nth-child(1) { animation-delay: 0s;    }
+      .vc-bar:nth-child(2) { animation-delay: 0.18s; }
+      .vc-bar:nth-child(3) { animation-delay: 0.36s; }
+      .vc-bar:nth-child(4) { animation-delay: 0.18s; }
+      .vc-bar:nth-child(5) { animation-delay: 0s;    }
+      @keyframes vc-pulse {
+        0%, 100% { transform: scaleY(1);   }
+        50%      { transform: scaleY(0.55);}
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .vc-bar { animation: none; }
+      }
+    </style>
+  </defs>
+
+  <!-- Waveform bars (rounded), 5 bars, symmetric wave -->
+  <g filter="url(#vc-glow)" fill="url(#vc-grad)">
+    <rect class="vc-bar" x="10"  y="52" width="12" height="36" rx="6"/>
+    <rect class="vc-bar" x="34"  y="36" width="12" height="68" rx="6"/>
+    <rect class="vc-bar" x="58"  y="18" width="12" height="104" rx="6"/>
+    <rect class="vc-bar" x="82"  y="36" width="12" height="68" rx="6"/>
+    <rect class="vc-bar" x="106" y="52" width="12" height="36" rx="6"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="140" y="90"
+        font-family="Geist, Inter, system-ui, -apple-system, sans-serif"
+        font-size="62" font-weight="700" letter-spacing="-1"
+        fill="url(#vc-grad)">VoxClone</text>
+</svg>

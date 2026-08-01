@@ -1,0 +1,7 @@
+chatterbox-tts
+kokoro>=0.9.4
+torch
+torchaudio
+soundfile
+numpy
+gradio

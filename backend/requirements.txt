@@ -1,8 +1,10 @@
 fastapi
 uvicorn[standard]
 python-multipart
-streamlit
 requests
 cloudinary
 pymongo[srv]
 python-dotenv
+bcrypt
+pydantic[email]
+gradio_client

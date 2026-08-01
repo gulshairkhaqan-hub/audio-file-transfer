@@ -1,0 +1,238 @@
+@import "tailwindcss";
+
+/* ── VoxClone design system — dark theme, purple→blue accent ── */
+:root {
+  --background: #0a0a0f;
+  --surface: #12121a;
+  --surface-2: #1a1a24;
+  --border: #26263a;
+  --foreground: #ededf2;
+  --muted: #8b8b9e;
+  --accent: #7c3aed;      /* purple */
+  --accent-2: #2563eb;    /* blue */
+  --accent-glow: rgba(124, 58, 237, 0.35);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-2: var(--accent-2);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), Inter, system-ui, sans-serif;
+}
+
+/* Reusable gradient used across buttons / accents */
+.gradient-accent {
+  background-image: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+.gradient-text {
+  background-image: linear-gradient(135deg, #a78bfa, #60a5fa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ── Interactive polish — hover lift + glow, used across buttons/cards/tabs ── */
+
+/* Buttons / cards that should lift toward the cursor on hover. */
+.lift {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+  will-change: transform;
+}
+.lift:hover {
+  transform: translateY(-3px);
+}
+.lift:active {
+  transform: translateY(0);
+}
+
+/* Nav tabs: slide in + glow on hover, with a growing accent bar on the left. */
+.nav-tab {
+  position: relative;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 0.2s ease, color 0.2s ease;
+}
+.nav-tab:hover {
+  transform: translateX(4px);
+}
+.nav-tab::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 0;
+  width: 3px;
+  border-radius: 9999px;
+  background: linear-gradient(var(--accent), var(--accent-2));
+  transform: translateY(-50%);
+  transition: height 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.nav-tab:hover::before {
+  height: 60%;
+}
+
+/* Feature/glass cards: subtle lift + accent border + glow ring on hover. */
+.card-hover {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 12px 40px -12px var(--accent-glow),
+    0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* Animated gradient sweep for primary buttons (techy shimmer). */
+.sheen {
+  position: relative;
+  overflow: hidden;
+}
+.sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    120deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.25) 50%,
+    transparent 70%
+  );
+  transform: translateX(-120%);
+  transition: transform 0.6s ease;
+}
+.sheen:hover::after {
+  transform: translateX(120%);
+}
+
+/* Fade-up entrance for page content. */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-up {
+  animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Live-waveform pulse for the logo bars (used by <Logo />). */
+@keyframes vc-pulse {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(0.55);
+  }
+}
+
+/* Inputs: soft accent glow when focused. Applied to all form fields. */
+.field {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+.field:focus {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent),
+    0 0 18px -4px var(--accent-glow);
+}
+
+/* Toast slide-in from the right. */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+.toast-in {
+  animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lift,
+  .nav-tab,
+  .card-hover,
+  .sheen::after,
+  .fade-up {
+    animation: none;
+    transition: none;
+  }
+  .lift:hover,
+  .nav-tab:hover,
+  .card-hover:hover {
+    transform: none;
+  }
+}
+
+/* ── Calm ambient background — replaces the loud WebGL wave on auth pages.
+   Layered blurred radial "aurora" blobs (purple→blue) that drift very slowly.
+   CSS-only, no WebGL — light and never gimmicky. ── */
+.aurora {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.aurora::before,
+.aurora::after {
+  content: "";
+  position: absolute;
+  width: 60vw;
+  height: 60vw;
+  border-radius: 9999px;
+  filter: blur(90px);
+  opacity: 0.35;
+  will-change: transform;
+}
+.aurora::before {
+  top: -20%;
+  left: -10%;
+  background: radial-gradient(circle at center, var(--accent), transparent 70%);
+  animation: aurora-drift-1 22s ease-in-out infinite alternate;
+}
+.aurora::after {
+  bottom: -25%;
+  right: -10%;
+  background: radial-gradient(circle at center, var(--accent-2), transparent 70%);
+  animation: aurora-drift-2 26s ease-in-out infinite alternate;
+}
+@keyframes aurora-drift-1 {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(6vw, 4vh) scale(1.12); }
+}
+@keyframes aurora-drift-2 {
+  from { transform: translate(0, 0) scale(1.05); }
+  to   { transform: translate(-5vw, -4vh) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aurora::before,
+  .aurora::after { animation: none; }
+}
+
+/* Thin scrollbar for the dark UI */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #35354d; }
