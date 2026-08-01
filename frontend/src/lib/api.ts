@@ -1,8 +1,25 @@
 // Central API client — talks to the FastAPI backend.
 // Base URL comes from env so we can point at localhost in dev and the
 // deployed backend in production (set NEXT_PUBLIC_API_URL in Vercel).
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+//
+// NEXT_PUBLIC_* is inlined at BUILD time, so changing it in Vercel requires a
+// redeploy. If it's missing in a production build the localhost fallback would
+// silently point the browser at the user's own machine, which surfaces as an
+// opaque "Failed to fetch" — so warn loudly instead.
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+if (
+  typeof window !== "undefined" &&
+  !process.env.NEXT_PUBLIC_API_URL &&
+  window.location.hostname !== "localhost" &&
+  window.location.hostname !== "127.0.0.1"
+) {
+  console.error(
+    "NEXT_PUBLIC_API_URL is not set — API calls are falling back to " +
+      "http://127.0.0.1:8000 and will fail. Set it in the Vercel project " +
+      "settings and redeploy (build-time variable)."
+  );
+}
 
 export type LoginResult = {
   message: string;
