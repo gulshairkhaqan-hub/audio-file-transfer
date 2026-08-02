@@ -191,6 +191,22 @@ def _store_audio(generated_path: str, user_email: str, kind: str):
 def home():
     return {"status": "Server is running"}
 
+
+@app.get("/config-check")
+def config_check():
+    """Shows which origins CORS accepts and whether services are wired.
+
+    Values are never returned — only whether each one is present — so this is
+    safe to leave public. Open this in a browser and compare `allowed_origins`
+    with the exact frontend URL when the browser reports a CORS failure.
+    """
+    return {
+        "allowed_origins": _origins,
+        "mongodb_configured": bool(os.getenv("MONGODB_URI")),
+        "cloudinary_configured": bool(os.getenv("CLOUDINARY_CLOUD_NAME")),
+        "voice_service_configured": bool(HF_SPACE_URL),
+    }
+
 @app.post("/register")
 async def register(data: RegisterRequest):
     # Normalize email
