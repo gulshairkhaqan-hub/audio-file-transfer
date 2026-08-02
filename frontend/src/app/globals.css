@@ -154,6 +154,24 @@ body {
     0 0 18px -4px var(--accent-glow);
 }
 
+/* Edge/IE inject their own password reveal button, which overlaps our eye
+   toggle and can't be themed. Hide it so PasswordField owns the toggle. */
+.field::-ms-reveal,
+.field::-ms-clear {
+  display: none;
+}
+
+/* Chrome's autofill paints fields white, breaking the dark theme. There is no
+   way to override the background directly, so use an inset shadow to cover it
+   and keep the text light. */
+.field:-webkit-autofill,
+.field:-webkit-autofill:hover,
+.field:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--foreground);
+  -webkit-box-shadow: 0 0 0 1000px var(--surface-2) inset;
+  caret-color: var(--foreground);
+}
+
 /* Toast slide-in from the right. */
 @keyframes toast-in {
   from {

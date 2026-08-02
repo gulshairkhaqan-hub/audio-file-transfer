@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import Logo from "@/components/Logo";
+import PasswordField from "@/components/PasswordField";
 
 // Single-screen centered register: logo + form, no scroll.
 export default function RegisterPage() {
@@ -12,7 +13,6 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
@@ -106,31 +106,11 @@ export default function RegisterPage() {
               />
             </div>
 
-            <div className="space-y-1">
-              <label
-                htmlFor="password"
-                className="ml-1 text-[10px] uppercase tracking-widest text-muted"
-              >
-                Password
-              </label>
-              <div className="relative">
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-2.5 pr-12 text-sm text-foreground outline-none placeholder:text-muted/50"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted hover:text-foreground"
-                >
-                  {showPassword ? "Hide" : "Show"}
-                </button>
-              </div>
-            </div>
+            <PasswordField
+              value={password}
+              onChange={setPassword}
+              autoComplete="new-password"
+            />
 
             {error && <p className="text-xs text-red-400">{error}</p>}
             {success && <p className="text-xs text-green-400">{success}</p>}

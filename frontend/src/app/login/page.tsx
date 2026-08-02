@@ -6,6 +6,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import Logo from "@/components/Logo";
+import PasswordField from "@/components/PasswordField";
 
 // Single-screen centered login: logo + form, no scroll.
 export default function LoginPage() {
@@ -78,22 +79,11 @@ export default function LoginPage() {
               />
             </div>
 
-            <div className="flex flex-col gap-1">
-              <label
-                htmlFor="password"
-                className="px-1 text-[10px] uppercase tracking-widest text-muted"
-              >
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-2.5 text-sm text-foreground outline-none placeholder:text-muted/50"
-              />
-            </div>
+            <PasswordField
+              value={password}
+              onChange={setPassword}
+              autoComplete="current-password"
+            />
 
             {error && <p className="text-xs text-red-400">{error}</p>}
 
