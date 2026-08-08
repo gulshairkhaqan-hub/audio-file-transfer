@@ -2,25 +2,51 @@
 
 Exposes three Gradio endpoints that the FastAPI backend calls via gradio_client:
 
-    /clone     (audio filepath, text)         -> audio filepath   [Chatterbox]
+    /clone     (audio filepath, text)         -> audio filepath   [Pocket TTS]
     /generate  (voice name, text)             -> audio filepath   [Kokoro]
     /mix       (voice a, voice b, blend, text)-> audio filepath   [Kokoro]
 
-Chatterbox handles voice cloning (needs a sample). Kokoro handles preset
+Pocket TTS handles voice cloning (needs a sample). Kokoro handles preset
 voices and voice blending — it exposes per-voice embedding tensors, so a
 genuine blend is just a weighted sum of two of them.
 
-Models load lazily: importing torch is cheap, but pulling weights is not, and
-a Space that loads both at import time takes minutes before it answers
-anything. First call to each feature pays the download once.
+Both models are small (Pocket TTS 100M, Kokoro 82M) and run on CPU. Pocket
+TTS's authors report no speedup from a GPU at batch size 1, so this Space
+needs no GPU hardware at all.
+
+Models load at import time rather than lazily: Pocket TTS's own docs note that
+loading the model and building voice states are both slow, so paying that cost
+once at startup keeps every request fast.
 """
 import gradio as gr
 import numpy as np
 import soundfile as sf
 import tempfile
 import torch
+from kokoro import KPipeline
+from pocket_tts import TTSModel
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+# ── ZeroGPU compatibility ────────────────────────────────────────────────────
+# Neither model needs a GPU, so CPU Basic is the natural hardware. But a free
+# HF account may only be allowed to host ZeroGPU Spaces, and ZeroGPU won't
+# schedule a Space that declares no GPU function. The decorator is harmless
+# off ZeroGPU — `spaces` returns the function untouched when Config.zero_gpu
+# is false, and isn't installed at all when running locally.
+#
+# Durations are upper bounds, and shorter ones get better queue priority, so
+# cloning (which builds a voice state first) gets more room than the two
+# Kokoro paths.
+try:
+    import spaces
+
+    clone_task = spaces.GPU(duration=60)
+    speak_task = spaces.GPU(duration=30)
+except ImportError:
+
+    def _passthrough(fn):
+        return fn
+
+    clone_task = speak_task = _passthrough
 
 # ── Curated preset voices ────────────────────────────────────────────────────
 # Kokoro ships 26+ voices; these 8 are the ones the UI offers (4 female,
@@ -38,26 +64,27 @@ VOICES = {
 }
 VOICE_CHOICES = [(label, vid) for vid, label in VOICES.items()]
 
-_chatterbox = None
-_kokoro = {}  # lang_code -> KPipeline
+# Both language pipelines are built up front — VOICES spans American ("a") and
+# British ("b"), so building lazily would just move the cost to the first
+# request for whichever language wasn't warmed.
+_kokoro = {code: KPipeline(lang_code=code) for code in ("a", "b")}
 
+# Pocket TTS ships two sets of weights. The cloning-capable ones live in the
+# gated `kyutai/pocket-tts` repo; if that download fails the library quietly
+# falls back to `pocket-tts-without-voice-cloning` and only raises later, when
+# someone actually submits a sample. Checking here turns that into a startup
+# signal: the Space logs say plainly whether /clone will work.
+#
+# To enable cloning: accept the terms at https://huggingface.co/kyutai/pocket-tts
+# and add an HF_TOKEN secret to the Space with read access to that repo.
+_pocket = TTSModel.load_model()
 
-def _get_chatterbox():
-    global _chatterbox
-    if _chatterbox is None:
-        from chatterbox.tts import ChatterboxTTS
-
-        _chatterbox = ChatterboxTTS.from_pretrained(device=DEVICE)
-    return _chatterbox
-
-
-def _get_kokoro(lang_code: str):
-    """One KPipeline per language. Voice ids starting with 'b' are British."""
-    if lang_code not in _kokoro:
-        from kokoro import KPipeline
-
-        _kokoro[lang_code] = KPipeline(lang_code=lang_code)
-    return _kokoro[lang_code]
+if not _pocket.has_voice_cloning:
+    print(
+        "WARNING: Pocket TTS loaded without voice-cloning weights — /clone will "
+        "reject uploads. Accept the terms at https://huggingface.co/kyutai/pocket-tts "
+        "and add an HF_TOKEN secret to this Space."
+    )
 
 
 def _write_wav(audio, sample_rate: int) -> str:
@@ -83,29 +110,44 @@ def _kokoro_speak(pipeline, text: str, voice) -> str:
 
 
 # ── Feature 1: voice cloning ─────────────────────────────────────────────────
+@clone_task
 def clone(sample_audio, text):
+    """Clone the voice in `sample_audio` and speak `text` in it.
+
+    Pocket TTS splits this into two steps: build a "voice state" from the
+    sample, then generate against it. The state build is the slow half, but
+    it's specific to the uploaded sample so there's nothing to cache across
+    requests.
+    """
     if not text or not text.strip():
         raise gr.Error("Please provide some text to speak.")
     if sample_audio is None:
         raise gr.Error("Please provide a voice sample.")
+    if not _pocket.has_voice_cloning:
+        raise gr.Error(
+            "Voice cloning is unavailable on this deployment — the Space is "
+            "running the model's non-cloning weights. Preset voices and mixing "
+            "still work."
+        )
 
-    model = _get_chatterbox()
-    wav = model.generate(text.strip(), audio_prompt_path=sample_audio)
-    return _write_wav(wav, model.sr)
+    voice_state = _pocket.get_state_for_audio_prompt(sample_audio)
+    audio = _pocket.generate_audio(voice_state, text.strip())
+    return _write_wav(audio, _pocket.sample_rate)
 
 
 # ── Feature 2: preset-voice generation ───────────────────────────────────────
+@speak_task
 def generate(voice, text):
     if not text or not text.strip():
         raise gr.Error("Please provide some text to speak.")
     if voice not in VOICES:
         raise gr.Error(f"Unknown voice: {voice}")
 
-    pipeline = _get_kokoro(voice[0])
-    return _kokoro_speak(pipeline, text.strip(), voice)
+    return _kokoro_speak(_kokoro[voice[0]], text.strip(), voice)
 
 
 # ── Feature 3: voice mixing ──────────────────────────────────────────────────
+@speak_task
 def mix(voice_a, voice_b, blend, text):
     """Blend two voice embeddings and speak `text` in the result.
 
@@ -119,7 +161,7 @@ def mix(voice_a, voice_b, blend, text):
             raise gr.Error(f"Unknown voice: {v}")
 
     weight = min(max(float(blend), 0.0), 1.0)
-    pipeline = _get_kokoro(voice_a[0])
+    pipeline = _kokoro[voice_a[0]]
 
     emb_a = pipeline.load_voice(voice_a)
     emb_b = pipeline.load_voice(voice_b)
@@ -134,7 +176,7 @@ def mix(voice_a, voice_b, blend, text):
 with gr.Blocks(title="VoxClone Models") as demo:
     gr.Markdown(
         "## VoxClone — Model Service\n"
-        "API for the VoxClone app. Cloning via Chatterbox, presets and "
+        "API for the VoxClone app. Cloning via Pocket TTS, presets and "
         "blending via Kokoro."
     )
 

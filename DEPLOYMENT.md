@@ -10,7 +10,7 @@ Yeh app **3 separate services** pe deploy hoti hai:
 └─────────────┘      └─────────────┘      └──────────────────┘
 ```
 
-Teeno **free tier pe chal sakte hain, credit card nahi chahiye** (HF Space ka GPU upgrade na karein to).
+Teeno **free tier pe chal sakte hain**. Card sirf HuggingFace ke account verification ke liye chahiye ho sakta hai — is guide me **koi paid upgrade nahi** hai, aur free tier cross karne pe HF wait karata hai, bill nahi bhejta.
 
 ---
 
@@ -22,10 +22,28 @@ Teeno **free tier pe chal sakte hain, credit card nahi chahiye** (HF Space ka GP
 2. Settings:
    - **Space name**: `voxclone-models` (ya koi bhi naam)
    - **SDK**: Gradio
-   - **Hardware**: CPU basic (free)
+   - **Hardware**: **CPU basic (free)** try karein
    - **Visibility**: Public (private me HF_TOKEN chahiye)
 
-### 1.2 Files upload karein
+⚠️ **Agar CPU basic option na mile ya paid plan maange:** HF ne free accounts ke liye Gradio Space creation restrict kar diya hai — us soorat me **ZeroGPU** select karein, wo bhi free hai. Iske liye account "good standing" me hona chahiye: **email verified** aur **account 30 din se purana**.
+
+`app.py` dono hardware pe chalta hai — usme `@spaces.GPU` decorators lage hain jo CPU pe khud-ba-khud no-op ho jate hain, to koi code change nahi karna padega.
+
+### 1.2 Voice cloning enable karein (zaroori)
+
+Pocket TTS ke cloning weights **gated repo** me hain. Bina iske Space chalega, lekin `/clone` upload reject karega (generate + mix theek chalenge).
+
+1. [huggingface.co/kyutai/pocket-tts](https://huggingface.co/kyutai/pocket-tts) pe jaake **terms accept** karein
+2. [Settings → Access Tokens](https://huggingface.co/settings/tokens) se ek **read** token banayein
+3. Space me **Settings → Variables and secrets → New secret**:
+   - Name: `HF_TOKEN`
+   - Value: apna token
+
+⚠️ Token ko kabhi code me na likhein — sirf Space secret ke tor pe daalein.
+
+Space ke **Logs** me confirm karein: agar `WARNING: Pocket TTS loaded without voice-cloning weights` dikhe to token missing hai ya terms accept nahi hue.
+
+### 1.3 Files upload karein
 
 Space ke **Files** tab me jaake yeh 4 files upload karein (repo ke `hf_space/` folder se):
 
@@ -44,7 +62,7 @@ git commit -m "Initial commit"
 git push
 ```
 
-### 1.3 Build hone dein
+### 1.4 Build hone dein
 
 - Pehli baar 10-15 min lagenge (models download hote hain)
 - Build complete hone ke baad Space ka URL milega:
@@ -53,10 +71,19 @@ git push
   ```
 - Yeh URL **backend me use hoga**
 
-⚠️ **Free CPU pe limitations:**
-- Cloning/generation me 30-60 sec lag sakte hain
-- 48 hours idle rehne ke baad Space sleep mode me chala jata hai
-- Pehli request slow hogi (cold start), phir thik ho jayega
+**Models aur speed:**
+
+| Feature | Model | Size |
+|---|---|---|
+| Cloning | Pocket TTS (kyutai-labs, MIT) | 100M params |
+| Generate / Mix | Kokoro | 82M params |
+
+Dono chhote models hain aur **CPU pe theek chalte hain** — Pocket TTS ke authors ne khud likha hai ke GPU se koi speedup nahi milta (batch size 1 pe), aur wo sirf 2 CPU cores use karta hai (~6x real-time). Models startup pe load hote hain, isliye Space build ke baad requests fast hoti hain.
+
+⚠️ **Free tier ki limitations:**
+- Free hardware pe Space **48 hours idle** rehne ke baad sleep mode me chala jata hai — pehli request ke baad wake ho jayega
+- ZeroGPU use kar rahe hain to free account ko **5 min/day GPU quota** milta hai (sirf execution time count hota hai, idle nahi)
+
 
 ---
 
@@ -163,11 +190,17 @@ Agar pehli request pe HF Space error aaye ("The model service may be starting up
 - MongoDB URI sahi hai? (Atlas me network access `0.0.0.0/0` allow hai?)
 - Cloudinary credentials valid hain?
 
-### HF Space timeout
+### HF Space timeout ya slow
 
-- Space free CPU pe chal raha hai to 60s+ lag sakte hain
+- Space 48h se idle tha to pehli request wake-up me lagti hai — 1 min wait karke retry karein
 - Space URL browser me khol ke check karein ke wo live hai
-- Space ka "Logs" tab dekhein
+- Space ka "Logs" tab dekhein — build fail to nahi hui?
+- ZeroGPU pe hain aur "quota exceeded" aaye to daily 5 min khatam ho chuke hain (24h baad reset)
+
+### Demo se pehle (ehm)
+
+- Meet se **10 min pehle** ek generation chala lein — Space warm ho jayega
+- Backup ke tor pe local ready rakhein: `cd hf_space && pip install -r requirements.txt && python app.py`
 
 ### CORS error (browser console me)
 
@@ -180,13 +213,14 @@ Agar pehli request pe HF Space error aaye ("The model service may be starting up
 
 | Service | Free tier limit | Paid tier (agar cross ho) |
 |---|---|---|
-| **HF Space (CPU)** | Always free (with 48h sleep) | GPU: $0.60/hr (~$450/mo) |
+| **HF Space (CPU basic)** | Always free (48h idle pe sleep) | CPU upgrade: $0.03/hr |
+| **HF Space (ZeroGPU)** | Free, 5 min/day GPU quota | PRO $9/mo (8x quota) |
 | **Vercel (Frontend)** | 100 GB bandwidth | Pro: $20/mo |
 | **Vercel (Backend)** | 100 GB-hrs serverless | Pro: $20/mo |
 | **MongoDB Atlas** | 512 MB storage | Shared: $9/mo |
 | **Cloudinary** | 25 GB storage, 25 GB bandwidth | Plus: $99/mo |
 
-⚠️ **Jab tak normal hobbyist traffic hai, sab kuch free me chal jayega.**
+⚠️ **Jab tak normal hobbyist traffic hai, sab kuch free me chal jayega.** HF pe paisa tabhi katta hai jab aap PRO subscribe karein **aur** khud manually pre-paid credits add karein — free account pe quota khatam hone pe bas wait karna padta hai.
 
 ---
 

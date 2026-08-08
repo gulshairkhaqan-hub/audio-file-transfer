@@ -1,7 +1,7 @@
-chatterbox-tts
+pocket-tts>=2.1.0
 kokoro>=0.9.4
-torch
-torchaudio
+torch>=2.5.0
 soundfile
 numpy
 gradio
+spaces

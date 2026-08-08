@@ -1,7 +1,7 @@
 "use client";
 
 // Feature 1 — Voice Cloning.
-// Upload a voice sample + type text → backend forwards to the HF Space (Chatterbox),
+// Upload a voice sample + type text → backend forwards to the HF Space (Pocket TTS),
 // stores the result on Cloudinary, and returns a shareable URL.
 import { useState } from "react";
 import { api } from "@/lib/api";

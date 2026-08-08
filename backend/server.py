@@ -46,7 +46,7 @@ users_collection = db["users"]
 UPLOAD_FOLDER = "audio_uploads"
 
 # ── Model service (HuggingFace Space) config ────────────────────────────────────
-# The Space runs Chatterbox (cloning) and Kokoro (presets + blending) and exposes
+# The Space runs Pocket TTS (cloning) and Kokoro (presets + blending) and exposes
 # a Gradio API. This backend loads no PyTorch — it just forwards HTTP calls, which
 # is what keeps it small enough for a serverless deploy. Set HF_SPACE_URL to the
 # Space URL, e.g. "https://<user>-voxclone-models.hf.space". HF_TOKEN is only
@@ -297,7 +297,7 @@ async def clone_voice(
     text: str = Form(...),
     user_email: str = Form(""),
 ):
-    """Voice cloning: forward the sample + text to the HF Space (Chatterbox),
+    """Voice cloning: forward the sample + text to the HF Space (Pocket TTS),
     upload the generated audio to Cloudinary, record it, and return the URL."""
     if not HF_SPACE_URL:
         return _space_unavailable()
