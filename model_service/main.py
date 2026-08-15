@@ -39,20 +39,41 @@ MAX_TEXT_CHARS = 1000
 # subscription's compute grant.
 MODEL_API_KEY = os.getenv("MODEL_API_KEY", "")
 
-# ── Curated preset voices ────────────────────────────────────────────────────
-# Kokoro ships 26+ voices; these 8 are the ones the UI offers (4 female,
-# 4 male, American + British). Keys are Kokoro's internal voice ids — the
-# prefix encodes language ("a" = American, "b" = British) and gender. Must
-# stay in sync with VOICES in backend/server.py.
+# ── Preset voices ─────────────────────────────────────────────────────────────
+# Every American ("a") and British ("b") voice Kokoro ships — the two languages
+# the loaded pipelines cover, so all of these work with zero extra deps. Keys are
+# Kokoro's internal voice ids (prefix = language + gender); values are the UI
+# label. Ordered best-first by Kokoro's own quality grades. Must stay in sync
+# with VOICES in backend/server.py.
 VOICES = {
     "af_heart": "Sophia — American, female",
     "af_bella": "Bella — American, female",
-    "am_michael": "Michael — American, male",
-    "am_adam": "Adam — American, male",
     "bf_emma": "Emma — British, female",
+    "af_nicole": "Nicole — American, female",
+    "af_aoede": "Aoede — American, female",
+    "af_kore": "Kore — American, female",
+    "af_sarah": "Sarah — American, female",
+    "am_michael": "Michael — American, male",
+    "am_fenrir": "Fenrir — American, male",
+    "am_puck": "Puck — American, male",
+    "af_alloy": "Alloy — American, female",
+    "af_nova": "Nova — American, female",
     "bf_isabella": "Isabella — British, female",
     "bm_george": "George — British, male",
+    "bm_fable": "Fable — British, male",
+    "af_sky": "Sky — American, female",
     "bm_lewis": "Lewis — British, male",
+    "af_jessica": "Jessica — American, female",
+    "af_river": "River — American, female",
+    "am_echo": "Echo — American, male",
+    "am_eric": "Eric — American, male",
+    "am_liam": "Liam — American, male",
+    "am_onyx": "Onyx — American, male",
+    "bf_alice": "Alice — British, female",
+    "bf_lily": "Lily — British, female",
+    "bm_daniel": "Daniel — British, male",
+    "am_santa": "Santa — American, male",
+    "am_adam": "Adam — American, male",
 }
 
 # Both language pipelines are built up front — VOICES spans American ("a") and
