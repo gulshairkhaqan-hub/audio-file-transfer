@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
+import requests
 from pymongo import MongoClient
 
 app = FastAPI(title="VoxClone API")
@@ -45,17 +46,22 @@ uploads_collection = db["uploads"]
 users_collection = db["users"]
 UPLOAD_FOLDER = "audio_uploads"
 
-# ── Model service (HuggingFace Space) config ────────────────────────────────────
-# The Space runs Pocket TTS (cloning) and Kokoro (presets + blending) and exposes
-# a Gradio API. This backend loads no PyTorch — it just forwards HTTP calls, which
-# is what keeps it small enough for a serverless deploy. Set HF_SPACE_URL to the
-# Space URL, e.g. "https://<user>-voxclone-models.hf.space". HF_TOKEN is only
-# needed for a private Space.
-HF_SPACE_URL = os.getenv("HF_SPACE_URL", "")
-HF_TOKEN = os.getenv("HF_TOKEN") or None
+# ── Model service (Azure Container Apps) config ─────────────────────────────────
+# The model service runs Pocket TTS (cloning) and Kokoro (presets + blending) as a
+# plain REST API. This backend loads no PyTorch — it just forwards HTTP calls, which
+# is what keeps it small enough for a serverless deploy. Set MODEL_SERVICE_URL to the
+# service URL (e.g. "https://voxclone-models.<region>.azurecontainerapps.io") and
+# MODEL_API_KEY to the shared key the service checks via the X-API-Key header.
+MODEL_SERVICE_URL = os.getenv("MODEL_SERVICE_URL", "").rstrip("/")
+MODEL_API_KEY = os.getenv("MODEL_API_KEY", "")
+
+# When the service is scaled to zero, the first call cold-starts the container
+# (model load) and can take ~40-90s; warm calls return in a few seconds. Keep this
+# generous, but note the platform (e.g. Vercel) may impose its own shorter limit.
+MODEL_TIMEOUT_SECONDS = 120
 
 # Preset voices offered by the /generate and /mix features. Must stay in sync
-# with VOICES in hf_space/app.py — the Space rejects ids it doesn't know.
+# with VOICES in model_service/main.py — the service rejects ids it doesn't know.
 VOICES = [
     {"id": "af_heart", "name": "Sophia", "accent": "American", "gender": "female"},
     {"id": "af_bella", "name": "Bella", "accent": "American", "gender": "female"},
@@ -112,15 +118,47 @@ def _validate_text(text: str):
     return None
 
 
-def _space_client():
-    """Build a gradio_client for the model Space.
+def _model_configured() -> bool:
+    """True when both the service URL and API key are set."""
+    return bool(MODEL_SERVICE_URL and MODEL_API_KEY)
 
-    Imported lazily so the app still boots in an environment where the dep is
-    missing and no model endpoint is ever called.
+
+def _request_audio(path: str, *, json=None, data=None, files=None):
+    """POST to the model service and save the returned WAV to a temp file.
+
+    Returns the temp file path on success, or a JSONResponse describing the
+    failure so callers can just check the type and return it directly.
     """
-    from gradio_client import Client
+    if not _model_configured():
+        return _space_unavailable()
 
-    return Client(HF_SPACE_URL, hf_token=HF_TOKEN)
+    try:
+        resp = requests.post(
+            f"{MODEL_SERVICE_URL}{path}",
+            headers={"X-API-Key": MODEL_API_KEY},
+            json=json,
+            data=data,
+            files=files,
+            timeout=MODEL_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException:
+        return _space_failed()
+
+    if resp.status_code != 200:
+        # Pass through the service's own 400 message (e.g. unknown voice); hide
+        # every other status behind a generic "try again" so nothing leaks.
+        if resp.status_code == 400:
+            try:
+                detail = resp.json().get("detail")
+            except ValueError:
+                detail = None
+            if detail:
+                return JSONResponse(status_code=400, content={"error": detail})
+        return _space_failed()
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+        f.write(resp.content)
+        return f.name
 
 
 def _space_unavailable():
@@ -204,7 +242,7 @@ def config_check():
         "allowed_origins": _origins,
         "mongodb_configured": bool(os.getenv("MONGODB_URI")),
         "cloudinary_configured": bool(os.getenv("CLOUDINARY_CLOUD_NAME")),
-        "voice_service_configured": bool(HF_SPACE_URL),
+        "voice_service_configured": _model_configured(),
     }
 
 @app.post("/register")
@@ -297,52 +335,30 @@ async def clone_voice(
     text: str = Form(...),
     user_email: str = Form(""),
 ):
-    """Voice cloning: forward the sample + text to the HF Space (Pocket TTS),
+    """Voice cloning: forward the sample + text to the model service (Pocket TTS),
     upload the generated audio to Cloudinary, record it, and return the URL."""
-    if not HF_SPACE_URL:
-        return _space_unavailable()
-
     err = _validate_text(text)
     if err:
         return err
 
-    # Save the uploaded sample to a temp file — gradio_client needs a filepath.
-    suffix = os.path.splitext(audio.filename or "")[1] or ".wav"
-    tmp_in = None
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
-            f.write(await audio.read())
-            tmp_in = f.name
+    audio_bytes = await audio.read()
+    filename = audio.filename or "sample.wav"
+    content_type = audio.content_type or "audio/wav"
 
-        from gradio_client import handle_file
+    result = _request_audio(
+        "/clone",
+        data={"text": text.strip()},
+        files={"audio": (filename, audio_bytes, content_type)},
+    )
+    if isinstance(result, JSONResponse):
+        return result
 
-        client = _space_client()
-        result = client.predict(
-            handle_file(tmp_in),
-            text.strip(),
-            api_name="/clone",
-        )
-        # Gradio returns a local filepath to the generated audio.
-        generated_path = result[0] if isinstance(result, (list, tuple)) else result
-    except Exception:
-        return _space_failed()
-    finally:
-        if tmp_in and os.path.exists(tmp_in):
-            try:
-                os.remove(tmp_in)
-            except OSError:
-                pass
-
-    # Upload the generated audio to Cloudinary and store record in MongoDB.
-    return _store_audio(generated_path, user_email, "clone")
+    return _store_audio(result, user_email, "clone")
 
 
 @app.post("/generate")
 async def generate_voice(data: GenerateRequest):
-    """Preset-voice generation: call the HF Space (Kokoro), upload the result."""
-    if not HF_SPACE_URL:
-        return _space_unavailable()
-
+    """Preset-voice generation: call the model service (Kokoro), upload the result."""
     err = _validate_text(data.text)
     if err:
         return err
@@ -350,23 +366,16 @@ async def generate_voice(data: GenerateRequest):
     if data.voice not in VOICE_IDS:
         return JSONResponse(status_code=400, content={"error": "Invalid voice selected."})
 
-    try:
-        client = _space_client()
-        result = client.predict(data.voice, data.text.strip(), api_name="/generate")
-        generated_path = result[0] if isinstance(result, (list, tuple)) else result
-    except Exception:
-        return _space_failed()
+    result = _request_audio("/generate", json={"voice": data.voice, "text": data.text.strip()})
+    if isinstance(result, JSONResponse):
+        return result
 
-    result = _store_audio(generated_path, data.user_email, "generate")
-    return result
+    return _store_audio(result, data.user_email, "generate")
 
 
 @app.post("/mix")
 async def mix_voices(data: MixRequest):
     """Voice mixing: blend two Kokoro voice embeddings and speak `text` in the result."""
-    if not HF_SPACE_URL:
-        return _space_unavailable()
-
     err = _validate_text(data.text)
     if err:
         return err
@@ -378,21 +387,19 @@ async def mix_voices(data: MixRequest):
     if not (0.0 <= data.blend <= 1.0):
         return JSONResponse(status_code=400, content={"error": "Blend must be between 0.0 and 1.0."})
 
-    try:
-        client = _space_client()
-        result = client.predict(
-            data.voice_a,
-            data.voice_b,
-            data.blend,
-            data.text.strip(),
-            api_name="/mix",
-        )
-        generated_path = result[0] if isinstance(result, (list, tuple)) else result
-    except Exception:
-        return _space_failed()
+    result = _request_audio(
+        "/mix",
+        json={
+            "voice_a": data.voice_a,
+            "voice_b": data.voice_b,
+            "blend": data.blend,
+            "text": data.text.strip(),
+        },
+    )
+    if isinstance(result, JSONResponse):
+        return result
 
-    result = _store_audio(generated_path, data.user_email, "mix")
-    return result
+    return _store_audio(result, data.user_email, "mix")
 
 
 @app.get("/voices")
