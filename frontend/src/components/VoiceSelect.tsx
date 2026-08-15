@@ -9,37 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type Voice } from "@/lib/api";
 import { voiceTier } from "@/lib/useVoices";
-
-// Gender-tinted avatar so the list scans quickly. Inline gradients (not
-// Tailwind utilities) to stay independent of the v3/v4 gradient-class rename.
-const AVATAR: Record<string, string> = {
-  female: "linear-gradient(135deg, #d946ef, #7c3aed)",
-  male: "linear-gradient(135deg, #0ea5e9, #2563eb)",
-};
-
-function Avatar({ voice, size = 34 }: { voice: Voice; size?: number }) {
-  return (
-    <span
-      className="flex shrink-0 items-center justify-center rounded-full font-semibold text-white"
-      style={{
-        width: size,
-        height: size,
-        fontSize: size * 0.4,
-        backgroundImage: AVATAR[voice.gender] ?? AVATAR.female,
-      }}
-    >
-      {voice.name.charAt(0).toUpperCase()}
-    </span>
-  );
-}
-
-function HdBadge() {
-  return (
-    <span className="ml-2 rounded-full bg-accent/15 px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-accent-2">
-      HD
-    </span>
-  );
-}
+import { VoiceAvatar, HdBadge } from "@/components/VoiceAvatar";
 
 type Gender = "all" | "female" | "male";
 type Accent = "all" | "American" | "British";
@@ -122,7 +92,7 @@ export default function VoiceSelect({
       >
         {selected ? (
           <>
-            <Avatar voice={selected} />
+            <VoiceAvatar voice={selected} />
             <span className="min-w-0 flex-1">
               <span className="block truncate font-medium text-foreground">
                 {selected.name}
@@ -228,7 +198,7 @@ export default function VoiceSelect({
                       isSel ? "bg-accent/15" : "hover:bg-surface-2"
                     }`}
                   >
-                    <Avatar voice={v} />
+                    <VoiceAvatar voice={v} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium text-foreground">
                         {v.name}

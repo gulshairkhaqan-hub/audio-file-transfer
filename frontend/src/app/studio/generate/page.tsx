@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/components/Toast";
 import { useVoices } from "@/lib/useVoices";
 import VoiceSelect from "@/components/VoiceSelect";
+import { PICK_VOICE_KEY } from "@/app/studio/voices/page";
 import ResultPanel from "@/components/ResultPanel";
 import RecentList from "@/components/RecentList";
 
@@ -22,9 +23,19 @@ export default function GeneratePage() {
   const [resultUrl, setResultUrl] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Default to the first voice once the list arrives.
+  // On first load, honour a voice chosen from the Voice Library (stashed in
+  // localStorage by that page); otherwise default to the first voice.
   useEffect(() => {
-    if (voices.length > 0 && !voice) setVoice(voices[0].id);
+    if (voices.length === 0 || voice) return;
+    let picked = "";
+    try {
+      picked = localStorage.getItem(PICK_VOICE_KEY) || "";
+      if (picked) localStorage.removeItem(PICK_VOICE_KEY);
+    } catch {
+      // ignore storage errors — just fall back to the first voice
+    }
+    const valid = picked && voices.some((v) => v.id === picked);
+    setVoice(valid ? picked : voices[0].id);
   }, [voices, voice]);
 
   async function handleSubmit(e: React.FormEvent) {

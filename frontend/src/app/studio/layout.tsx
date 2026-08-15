@@ -6,11 +6,28 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import Logo from "@/components/Logo";
 
-// Sidebar nav items for the 3 features.
-const NAV = [
-  { href: "/studio/clone", label: "Voice Cloning", icon: "🎙️" },
-  { href: "/studio/generate", label: "Voice Generation", icon: "🔊" },
-  { href: "/studio/mix", label: "Voice Mixing", icon: "🎛️" },
+// Sidebar nav, grouped into sections. Dashboard stands alone at the top; the
+// three creation features live under "Create"; browsing views under "Explore".
+const NAV_GROUPS: {
+  title?: string;
+  items: { href: string; label: string; icon: string }[];
+}[] = [
+  { items: [{ href: "/studio", label: "Dashboard", icon: "🏠" }] },
+  {
+    title: "Create",
+    items: [
+      { href: "/studio/clone", label: "Voice Cloning", icon: "🎙️" },
+      { href: "/studio/generate", label: "Voice Generation", icon: "🔊" },
+      { href: "/studio/mix", label: "Voice Mixing", icon: "🎛️" },
+    ],
+  },
+  {
+    title: "Explore",
+    items: [
+      { href: "/studio/voices", label: "Voice Library", icon: "🎭" },
+      { href: "/studio/library", label: "My Library", icon: "📚" },
+    ],
+  },
 ];
 
 export default function StudioLayout({
@@ -48,24 +65,33 @@ export default function StudioLayout({
           <Logo className="h-11 w-auto" />
         </div>
 
-        <nav className="w-64 flex-1 space-y-1 p-3">
-          {NAV.map((item) => {
-            const active = pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`nav-tab flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm ${
-                  active
-                    ? "gradient-accent text-white shadow-[0_0_16px_var(--accent-glow)]"
-                    : "text-muted hover:bg-surface-2 hover:text-foreground"
-                }`}
-              >
-                <span>{item.icon}</span>
-                {item.label}
-              </Link>
-            );
-          })}
+        <nav className="w-64 flex-1 space-y-4 overflow-y-auto p-3">
+          {NAV_GROUPS.map((group, gi) => (
+            <div key={gi} className="space-y-1">
+              {group.title && (
+                <p className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-widest text-muted/70">
+                  {group.title}
+                </p>
+              )}
+              {group.items.map((item) => {
+                const active = pathname === item.href;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`nav-tab flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm ${
+                      active
+                        ? "gradient-accent text-white shadow-[0_0_16px_var(--accent-glow)]"
+                        : "text-muted hover:bg-surface-2 hover:text-foreground"
+                    }`}
+                  >
+                    <span>{item.icon}</span>
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="w-64 border-t border-border p-4">
