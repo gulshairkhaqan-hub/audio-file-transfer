@@ -39,3 +39,20 @@ export function useVoices() {
 export function voiceLabel(v: Voice) {
   return `${v.name} — ${v.accent}, ${v.gender}`;
 }
+
+/** Quality bucket, from Kokoro's own published voice grades. Presentational
+ *  only — powers the "HD" badge and the "Recommended" filter. The backend
+ *  already returns voices best-first, so this never affects ordering. */
+export type VoiceTier = "premium" | "standard" | "basic";
+
+const PREMIUM = new Set(["af_heart", "af_bella", "bf_emma", "af_nicole"]);
+const STANDARD = new Set([
+  "af_aoede", "af_kore", "af_sarah", "am_michael", "am_fenrir", "am_puck",
+  "af_alloy", "af_nova", "bf_isabella", "bm_george", "bm_fable", "af_sky",
+]);
+
+export function voiceTier(id: string): VoiceTier {
+  if (PREMIUM.has(id)) return "premium";
+  if (STANDARD.has(id)) return "standard";
+  return "basic";
+}

@@ -7,7 +7,8 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/components/Toast";
-import { useVoices, voiceLabel } from "@/lib/useVoices";
+import { useVoices } from "@/lib/useVoices";
+import VoiceSelect from "@/components/VoiceSelect";
 import ResultPanel from "@/components/ResultPanel";
 import RecentList from "@/components/RecentList";
 
@@ -86,19 +87,12 @@ export default function GeneratePage() {
           <label className="ml-1 text-xs uppercase tracking-widest text-muted">
             Voice
           </label>
-          <select
+          <VoiceSelect
+            voices={voices}
             value={voice}
-            onChange={(e) => setVoice(e.target.value)}
-            disabled={voicesLoading || voices.length === 0}
-            className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-3 text-sm text-foreground outline-none disabled:opacity-60"
-          >
-            {voicesLoading && <option>Loading voices…</option>}
-            {voices.map((v) => (
-              <option key={v.id} value={v.id}>
-                {voiceLabel(v)}
-              </option>
-            ))}
-          </select>
+            onChange={setVoice}
+            loading={voicesLoading}
+          />
         </div>
 
         <div className="space-y-1.5">
