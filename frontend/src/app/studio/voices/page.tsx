@@ -8,7 +8,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useVoices, voiceTier } from "@/lib/useVoices";
 import { useFavourites } from "@/lib/favourites";
-import { VoiceAvatar, HdBadge } from "@/components/VoiceAvatar";
+import { VoicePhotoBanner, HdBadge } from "@/components/VoiceAvatar";
 
 export const PICK_VOICE_KEY = "voxclone_pick_voice";
 
@@ -144,19 +144,12 @@ export default function VoicesPage() {
             {filtered.map((v) => (
               <div
                 key={v.id}
-                className="card-hover flex flex-col rounded-2xl border border-white/10 bg-surface/80 p-4 shadow-xl backdrop-blur-md"
+                className="card-hover flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-surface/80 shadow-xl backdrop-blur-md"
               >
-                <div className="flex items-center gap-3">
-                  <VoiceAvatar voice={v} size={44} />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">
-                      {v.name}
-                      {voiceTier(v.id) === "premium" && <HdBadge />}
-                    </p>
-                    <p className="truncate text-xs text-muted">
-                      {v.accent} · {v.gender}
-                    </p>
-                  </div>
+                {/* Photo banner — scrim keeps the favourite star legible on any photo */}
+                <div className="relative">
+                  <VoicePhotoBanner voice={v} className="h-40 w-full" />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
                   <button
                     type="button"
                     onClick={() => toggleFavourite(v.id)}
@@ -166,21 +159,30 @@ export default function VoicesPage() {
                     title={
                       isFavourite(v.id) ? "Remove favourite" : "Add favourite"
                     }
-                    className={`ml-auto shrink-0 rounded-md px-1.5 py-1 text-lg leading-none transition-colors ${
+                    className={`absolute right-2 top-2 rounded-full bg-black/40 px-2 py-1 text-lg leading-none backdrop-blur-sm transition-colors ${
                       isFavourite(v.id)
                         ? "text-yellow-400"
-                        : "text-muted/50 hover:text-foreground"
+                        : "text-white/70 hover:text-white"
                     }`}
                   >
                     {isFavourite(v.id) ? "★" : "☆"}
                   </button>
                 </div>
-                <button
-                  onClick={() => selectVoice(v.id)}
-                  className="lift mt-4 rounded-xl border border-border py-2 text-xs font-medium text-foreground hover:border-accent/50 hover:bg-surface-2"
-                >
-                  Use in Generate →
-                </button>
+                <div className="flex flex-1 flex-col p-4">
+                  <p className="truncate text-sm font-semibold text-foreground">
+                    {v.name}
+                    {voiceTier(v.id) === "premium" && <HdBadge />}
+                  </p>
+                  <p className="truncate text-xs text-muted">
+                    {v.accent} · {v.gender}
+                  </p>
+                  <button
+                    onClick={() => selectVoice(v.id)}
+                    className="lift mt-4 rounded-xl border border-border py-2 text-xs font-medium text-foreground hover:border-accent/50 hover:bg-surface-2"
+                  >
+                    Use in Generate →
+                  </button>
+                </div>
               </div>
             ))}
           </div>
