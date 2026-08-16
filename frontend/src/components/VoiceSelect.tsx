@@ -11,6 +11,7 @@ import { type Voice } from "@/lib/api";
 import { voiceTier } from "@/lib/useVoices";
 import { useFavourites } from "@/lib/favourites";
 import { VoiceAvatar, HdBadge } from "@/components/VoiceAvatar";
+import { VoicePreviewButton } from "@/components/VoicePreviewButton";
 
 type Gender = "all" | "female" | "male";
 
@@ -248,6 +249,7 @@ export default function VoiceSelect({
                         </svg>
                       )}
                     </button>
+                    <VoicePreviewButton voiceId={v.id} size={28} />
                     <button
                       type="button"
                       onClick={() => toggleFavourite(v.id)}

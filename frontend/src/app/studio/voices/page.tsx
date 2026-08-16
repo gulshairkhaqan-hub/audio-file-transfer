@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useVoices, voiceTier } from "@/lib/useVoices";
 import { useFavourites } from "@/lib/favourites";
 import { VoicePhotoBanner, HdBadge } from "@/components/VoiceAvatar";
+import { VoicePreviewButton } from "@/components/VoicePreviewButton";
 
 export const PICK_VOICE_KEY = "voxclone_pick_voice";
 
@@ -150,6 +151,10 @@ export default function VoicesPage() {
                 <div className="relative">
                   <VoicePhotoBanner voice={v} className="aspect-[4/3] w-full" />
                   <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+                  {/* Center play button — hear the voice before generating */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <VoicePreviewButton voiceId={v.id} size={52} className="shadow-lg" />
+                  </div>
                   <button
                     type="button"
                     onClick={() => toggleFavourite(v.id)}
