@@ -12,6 +12,13 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 // Used to cap the text inputs and drive the character counters.
 export const MAX_TEXT_CHARS = 1000;
 
+// Talking-rate bounds for the generate + mix speed sliders. Mirrors MIN_SPEED/
+// MAX_SPEED in server.py (and the ge/le on the model service request models).
+export const MIN_SPEED = 0.5;
+export const MAX_SPEED = 2.0;
+export const DEFAULT_SPEED = 1.0;
+export const SPEED_STEP = 0.05;
+
 if (
   typeof window !== "undefined" &&
   !process.env.NEXT_PUBLIC_API_URL &&
@@ -106,37 +113,49 @@ export const api = {
   },
 
   // Feature 2 — Voice Generation: pick a preset voice + text, get audio back.
+  // `speed` scales the talking rate (1.0 = normal); defaults to normal.
   generateVoice: ({
     voice,
     text,
     email,
+    speed = DEFAULT_SPEED,
   }: {
     voice: string;
     text: string;
     email: string;
+    speed?: number;
   }) =>
-    postJSON<CloneResult>("/generate", { voice, text, user_email: email }),
+    postJSON<CloneResult>("/generate", {
+      voice,
+      text,
+      speed,
+      user_email: email,
+    }),
 
   // Feature 3 — Voice Mixing: blend two preset voices, then speak `text`.
-  // `blend` is voice A's weight: 1.0 = all A, 0.0 = all B.
+  // `blend` is voice A's weight: 1.0 = all A, 0.0 = all B. `speed` scales the
+  // talking rate (1.0 = normal).
   mixVoices: ({
     voiceA,
     voiceB,
     blend,
     text,
     email,
+    speed = DEFAULT_SPEED,
   }: {
     voiceA: string;
     voiceB: string;
     blend: number;
     text: string;
     email: string;
+    speed?: number;
   }) =>
     postJSON<CloneResult>("/mix", {
       voice_a: voiceA,
       voice_b: voiceB,
       blend,
       text,
+      speed,
       user_email: email,
     }),
 

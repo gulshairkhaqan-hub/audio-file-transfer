@@ -13,7 +13,6 @@ import { VoiceAvatar, HdBadge } from "@/components/VoiceAvatar";
 export const PICK_VOICE_KEY = "voxclone_pick_voice";
 
 type Gender = "all" | "female" | "male";
-type Accent = "all" | "American" | "British";
 
 export default function VoicesPage() {
   const router = useRouter();
@@ -21,9 +20,16 @@ export default function VoicesPage() {
   const { isFavourite, toggleFavourite } = useFavourites();
   const [query, setQuery] = useState("");
   const [gender, setGender] = useState<Gender>("all");
-  const [accent, setAccent] = useState<Accent>("all");
+  const [accent, setAccent] = useState<string>("all");
   const [recommended, setRecommended] = useState(false);
   const [favOnly, setFavOnly] = useState(false);
+
+  // Accent chips are derived from the loaded voices, so new languages appear
+  // automatically without touching this file.
+  const accents = useMemo(() => {
+    const seen = new Set(voices.map((v) => v.accent).filter(Boolean));
+    return Array.from(seen).sort();
+  }, [voices]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -52,7 +58,7 @@ export default function VoicesPage() {
       <h1 className="text-2xl font-semibold tracking-tight">🎭 Voice Library</h1>
       <p className="mt-1 text-sm text-muted">
         {voices.length > 0 ? `${voices.length} ` : ""}studio voices across
-        American and British accents. Preview the vibe, then use one in
+        multiple languages and accents. Preview the vibe, then use one in
         Generate.
       </p>
 
@@ -96,22 +102,15 @@ export default function VoicesPage() {
           >
             Male
           </Chip>
-          <Chip
-            active={accent === "American"}
-            onClick={() =>
-              setAccent((a) => (a === "American" ? "all" : "American"))
-            }
-          >
-            American
-          </Chip>
-          <Chip
-            active={accent === "British"}
-            onClick={() =>
-              setAccent((a) => (a === "British" ? "all" : "British"))
-            }
-          >
-            British
-          </Chip>
+          {accents.map((a) => (
+            <Chip
+              key={a}
+              active={accent === a}
+              onClick={() => setAccent((cur) => (cur === a ? "all" : a))}
+            >
+              {a}
+            </Chip>
+          ))}
         </div>
       </div>
 

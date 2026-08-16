@@ -4,11 +4,12 @@
 // Pick a preset voice + type text → backend calls Kokoro via the HF Space,
 // stores the result on Cloudinary, and returns a shareable URL.
 import { useEffect, useState } from "react";
-import { api, MAX_TEXT_CHARS } from "@/lib/api";
+import { api, MAX_TEXT_CHARS, DEFAULT_SPEED } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/components/Toast";
 import { useVoices } from "@/lib/useVoices";
 import VoiceSelect from "@/components/VoiceSelect";
+import SpeedControl from "@/components/SpeedControl";
 import { PICK_VOICE_KEY } from "@/app/studio/voices/page";
 import ResultPanel from "@/components/ResultPanel";
 import RecentList from "@/components/RecentList";
@@ -19,6 +20,7 @@ export default function GeneratePage() {
   const { voices, loading: voicesLoading, error: voicesError } = useVoices();
   const [voice, setVoice] = useState("");
   const [text, setText] = useState("");
+  const [speed, setSpeed] = useState(DEFAULT_SPEED);
   const [loading, setLoading] = useState(false);
   const [resultUrl, setResultUrl] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
@@ -57,6 +59,7 @@ export default function GeneratePage() {
         voice,
         text: text.trim(),
         email: user?.email || "",
+        speed,
       });
       setResultUrl(res.url);
       success("Voice generated successfully!");
@@ -128,6 +131,8 @@ export default function GeneratePage() {
             className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-3 text-sm text-foreground outline-none placeholder:text-muted/50"
           />
         </div>
+
+        <SpeedControl value={speed} onChange={setSpeed} disabled={loading} />
 
         <button
           type="submit"

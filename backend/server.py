@@ -91,10 +91,39 @@ VOICES = [
     {"id": "bm_daniel", "name": "Daniel", "accent": "British", "gender": "male"},
     {"id": "am_santa", "name": "Santa", "accent": "American", "gender": "male"},
     {"id": "am_adam", "name": "Adam", "accent": "American", "gender": "male"},
+    # ── Additional languages (Kokoro, phonemized via espeak-ng). The model
+    # service drops any whose pipeline fails to load, so it's the authority;
+    # this list must stay in sync with VOICES in model_service/main.py. ──
+    {"id": "ef_dora", "name": "Dora", "accent": "Spanish", "gender": "female"},
+    {"id": "em_alex", "name": "Alex", "accent": "Spanish", "gender": "male"},
+    {"id": "em_santa", "name": "Santa", "accent": "Spanish", "gender": "male"},
+    {"id": "ff_siwis", "name": "Siwis", "accent": "French", "gender": "female"},
+    {"id": "hf_alpha", "name": "Alpha", "accent": "Hindi", "gender": "female"},
+    {"id": "hf_beta", "name": "Beta", "accent": "Hindi", "gender": "female"},
+    {"id": "hm_omega", "name": "Omega", "accent": "Hindi", "gender": "male"},
+    {"id": "hm_psi", "name": "Psi", "accent": "Hindi", "gender": "male"},
+    {"id": "if_sara", "name": "Sara", "accent": "Italian", "gender": "female"},
+    {"id": "im_nicola", "name": "Nicola", "accent": "Italian", "gender": "male"},
+    {"id": "pf_dora", "name": "Dora", "accent": "Portuguese", "gender": "female"},
+    {"id": "pm_alex", "name": "Alex", "accent": "Portuguese", "gender": "male"},
+    {"id": "pm_santa", "name": "Santa", "accent": "Portuguese", "gender": "male"},
 ]
 VOICE_IDS = {v["id"] for v in VOICES}
 
 MAX_TEXT_CHARS = 1000
+
+# Talking-rate bounds for /generate and /mix. Mirrors the ge/le on the model
+# service's request models (model_service/main.py); out-of-range values are
+# clamped rather than rejected so a slider glitch never fails a request.
+MIN_SPEED = 0.5
+MAX_SPEED = 2.0
+
+
+def _clamp_speed(speed: float) -> float:
+    try:
+        return max(MIN_SPEED, min(MAX_SPEED, float(speed)))
+    except (TypeError, ValueError):
+        return 1.0
 
 
 class RegisterRequest(BaseModel):
@@ -116,6 +145,7 @@ class ChangePasswordRequest(BaseModel):
 class GenerateRequest(BaseModel):
     voice: str
     text: str
+    speed: float = 1.0
     user_email: str = ""
 
 
@@ -124,6 +154,7 @@ class MixRequest(BaseModel):
     voice_b: str
     blend: float = 0.5
     text: str
+    speed: float = 1.0
     user_email: str = ""
 
 
@@ -415,7 +446,10 @@ async def generate_voice(data: GenerateRequest):
     if data.voice not in VOICE_IDS:
         return JSONResponse(status_code=400, content={"error": "Invalid voice selected."})
 
-    result = _request_audio("/generate", json={"voice": data.voice, "text": data.text.strip()})
+    result = _request_audio(
+        "/generate",
+        json={"voice": data.voice, "text": data.text.strip(), "speed": _clamp_speed(data.speed)},
+    )
     if isinstance(result, JSONResponse):
         return result
 
@@ -443,6 +477,7 @@ async def mix_voices(data: MixRequest):
             "voice_b": data.voice_b,
             "blend": data.blend,
             "text": data.text.strip(),
+            "speed": _clamp_speed(data.speed),
         },
     )
     if isinstance(result, JSONResponse):

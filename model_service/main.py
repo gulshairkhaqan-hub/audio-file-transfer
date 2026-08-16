@@ -40,11 +40,13 @@ MAX_TEXT_CHARS = 1000
 MODEL_API_KEY = os.getenv("MODEL_API_KEY", "")
 
 # ── Preset voices ─────────────────────────────────────────────────────────────
-# Every American ("a") and British ("b") voice Kokoro ships — the two languages
-# the loaded pipelines cover, so all of these work with zero extra deps. Keys are
-# Kokoro's internal voice ids (prefix = language + gender); values are the UI
-# label. Ordered best-first by Kokoro's own quality grades. Must stay in sync
-# with VOICES in backend/server.py.
+# Kokoro's built-in voices across the languages we load: American ("a") and
+# British ("b") English work with zero extra deps; Spanish/French/Hindi/Italian/
+# Portuguese are phonemized via espeak-ng. Keys are Kokoro's internal voice ids
+# (prefix = language + gender); values are the UI label. English is ordered
+# best-first by Kokoro's own quality grades. Must stay in sync with VOICES in
+# backend/server.py — and voices for a language that fails to load are dropped
+# below, so this is the *superset* of what /voices may advertise.
 VOICES = {
     "af_heart": "Sophia — American, female",
     "af_bella": "Bella — American, female",
@@ -74,12 +76,50 @@ VOICES = {
     "bm_daniel": "Daniel — British, male",
     "am_santa": "Santa — American, male",
     "am_adam": "Adam — American, male",
+    # ── Additional languages (phonemized via espeak-ng, installed in the image).
+    # These are loaded with graceful degradation below: if a language's pipeline
+    # fails to initialise, its voices are dropped from VOICES so the service
+    # still starts and English keeps working. Must stay in sync with
+    # backend/server.py. ──
+    "ef_dora": "Dora — Spanish, female",
+    "em_alex": "Alex — Spanish, male",
+    "em_santa": "Santa — Spanish, male",
+    "ff_siwis": "Siwis — French, female",
+    "hf_alpha": "Alpha — Hindi, female",
+    "hf_beta": "Beta — Hindi, female",
+    "hm_omega": "Omega — Hindi, male",
+    "hm_psi": "Psi — Hindi, male",
+    "if_sara": "Sara — Italian, female",
+    "im_nicola": "Nicola — Italian, male",
+    "pf_dora": "Dora — Portuguese, female",
+    "pm_alex": "Alex — Portuguese, male",
+    "pm_santa": "Santa — Portuguese, male",
 }
 
-# Both language pipelines are built up front — VOICES spans American ("a") and
-# British ("b"), so building lazily would just move the cost to the first
-# request for whichever language wasn't warmed.
-_kokoro = {code: KPipeline(lang_code=code) for code in ("a", "b")}
+# Language pipelines are built up front (a cold start already pays for a
+# container boot, so lazy loading would just move the cost to the first request).
+# English ("a"/"b") uses misaki[en]; the other languages go through espeak-ng.
+# Each pipeline is built in isolation: if one fails to initialise — e.g. a
+# missing phonemizer dependency for a language — we log it and skip it rather
+# than letting the whole service fail to start.
+_LANG_CODES = ("a", "b", "e", "f", "h", "i", "p")
+
+
+def _load_pipelines(codes: tuple[str, ...]) -> dict[str, KPipeline]:
+    loaded: dict[str, KPipeline] = {}
+    for code in codes:
+        try:
+            loaded[code] = KPipeline(lang_code=code)
+        except Exception as exc:  # noqa: BLE001 — degrade gracefully, don't crash
+            print(f"[kokoro] skipping language '{code}': {exc}", flush=True)
+    return loaded
+
+
+_kokoro = _load_pipelines(_LANG_CODES)
+
+# Drop any voice whose language pipeline didn't load, so /voices and validation
+# only ever advertise voices that actually work.
+VOICES = {vid: label for vid, label in VOICES.items() if vid and vid[0] in _kokoro}
 
 _pocket = TTSModel.load_model()
 
@@ -104,6 +144,7 @@ auth = [Depends(require_api_key)]
 class GenerateRequest(BaseModel):
     voice: str
     text: str = Field(min_length=1, max_length=MAX_TEXT_CHARS)
+    speed: float = Field(default=1.0, ge=0.5, le=2.0)
 
 
 class MixRequest(BaseModel):
@@ -111,6 +152,7 @@ class MixRequest(BaseModel):
     voice_b: str
     blend: float = Field(ge=0.0, le=1.0)
     text: str = Field(min_length=1, max_length=MAX_TEXT_CHARS)
+    speed: float = Field(default=1.0, ge=0.5, le=2.0)
 
 
 def _clean_text(text: str) -> str:
@@ -159,13 +201,14 @@ def _wav_response(path: str) -> FileResponse:
     )
 
 
-def _kokoro_speak(pipeline, text: str, voice) -> str:
+def _kokoro_speak(pipeline, text: str, voice, speed: float = 1.0) -> str:
     """Run Kokoro and concatenate its chunks into one 24kHz wav.
 
     `voice` is either a voice id string or a pre-loaded embedding tensor —
-    KPipeline accepts both, which is what makes blending possible.
+    KPipeline accepts both, which is what makes blending possible. `speed`
+    scales the talking rate (1.0 = normal; <1 slower, >1 faster).
     """
-    chunks = [out.audio for out in pipeline(text, voice=voice)]
+    chunks = [out.audio for out in pipeline(text, voice=voice, speed=speed)]
     if not chunks:
         raise HTTPException(status_code=500, detail="The model produced no audio.")
     return _write_wav(np.concatenate([np.asarray(c).squeeze() for c in chunks]), 24000)
@@ -213,7 +256,7 @@ async def clone(
 def generate(req: GenerateRequest) -> FileResponse:
     voice = _check_voice(req.voice)
     text = _clean_text(req.text)
-    return _wav_response(_kokoro_speak(_kokoro[voice[0]], text, voice))
+    return _wav_response(_kokoro_speak(_kokoro[voice[0]], text, voice, req.speed))
 
 
 @app.post("/mix", dependencies=auth)
@@ -232,4 +275,4 @@ def mix(req: MixRequest) -> FileResponse:
     emb_b = pipeline.load_voice(voice_b)
     blended = emb_a * req.blend + emb_b * (1.0 - req.blend)
 
-    return _wav_response(_kokoro_speak(pipeline, text, blended))
+    return _wav_response(_kokoro_speak(pipeline, text, blended, req.speed))

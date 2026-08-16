@@ -4,11 +4,12 @@
 // Pick two preset voices + a blend weight → the backend asks the HF Space to
 // average their Kokoro voice embeddings and speak the text in the result.
 import { useEffect, useState } from "react";
-import { api, MAX_TEXT_CHARS } from "@/lib/api";
+import { api, MAX_TEXT_CHARS, DEFAULT_SPEED } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/components/Toast";
 import { useVoices } from "@/lib/useVoices";
 import VoiceSelect from "@/components/VoiceSelect";
+import SpeedControl from "@/components/SpeedControl";
 import ResultPanel from "@/components/ResultPanel";
 import RecentList from "@/components/RecentList";
 
@@ -20,6 +21,7 @@ export default function MixPage() {
   const [voiceB, setVoiceB] = useState("");
   const [blend, setBlend] = useState(0.5);
   const [text, setText] = useState("");
+  const [speed, setSpeed] = useState(DEFAULT_SPEED);
   const [loading, setLoading] = useState(false);
   const [resultUrl, setResultUrl] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
@@ -53,6 +55,7 @@ export default function MixPage() {
         blend,
         text: text.trim(),
         email: user?.email || "",
+        speed,
       });
       setResultUrl(res.url);
       success("Voices mixed successfully!");
@@ -171,6 +174,8 @@ export default function MixPage() {
             className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-3 text-sm text-foreground outline-none placeholder:text-muted/50"
           />
         </div>
+
+        <SpeedControl value={speed} onChange={setSpeed} disabled={loading} />
 
         <button
           type="submit"

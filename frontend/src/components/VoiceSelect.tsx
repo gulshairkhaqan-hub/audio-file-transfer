@@ -13,7 +13,6 @@ import { useFavourites } from "@/lib/favourites";
 import { VoiceAvatar, HdBadge } from "@/components/VoiceAvatar";
 
 type Gender = "all" | "female" | "male";
-type Accent = "all" | "American" | "British";
 
 export default function VoiceSelect({
   voices,
@@ -34,7 +33,7 @@ export default function VoiceSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [gender, setGender] = useState<Gender>("all");
-  const [accent, setAccent] = useState<Accent>("all");
+  const [accent, setAccent] = useState<string>("all");
   const [recommended, setRecommended] = useState(false);
   const [favOnly, setFavOnly] = useState(false);
   const { favs, isFavourite, toggleFavourite } = useFavourites();
@@ -42,6 +41,13 @@ export default function VoiceSelect({
   const searchRef = useRef<HTMLInputElement>(null);
 
   const selected = voices.find((v) => v.id === value);
+
+  // Accent filter chips are derived from the voices we actually loaded, so new
+  // languages (Spanish, Hindi, …) appear automatically without editing this file.
+  const accents = useMemo(() => {
+    const seen = new Set(voices.map((v) => v.accent).filter(Boolean));
+    return Array.from(seen).sort();
+  }, [voices]);
 
   // Close on outside click / Escape, and focus search when the panel opens.
   useEffect(() => {
@@ -173,22 +179,15 @@ export default function VoiceSelect({
               >
                 Male
               </Chip>
-              <Chip
-                active={accent === "American"}
-                onClick={() =>
-                  setAccent((a) => (a === "American" ? "all" : "American"))
-                }
-              >
-                American
-              </Chip>
-              <Chip
-                active={accent === "British"}
-                onClick={() =>
-                  setAccent((a) => (a === "British" ? "all" : "British"))
-                }
-              >
-                British
-              </Chip>
+              {accents.map((a) => (
+                <Chip
+                  key={a}
+                  active={accent === a}
+                  onClick={() => setAccent((cur) => (cur === a ? "all" : a))}
+                >
+                  {a}
+                </Chip>
+              ))}
             </div>
           </div>
 
