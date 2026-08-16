@@ -1,234 +1,209 @@
-# VoxClone Deployment Guide
+# 🚀 VoxClone Deployment Guide
 
-Yeh app **3 separate services** pe deploy hoti hai:
+Yeh app **3 alag services** se banti hai. Teeno ko alag deploy karna hota hai:
 
-```
-┌─────────────┐      ┌─────────────┐      ┌──────────────────┐
-│  Frontend   │ ───► │   Backend   │ ───► │  Model Service   │
-│  (Next.js)  │      │  (FastAPI)  │      │  (HF Space)      │
-│   Vercel    │      │   Vercel    │      │  HuggingFace     │
-└─────────────┘      └─────────────┘      └──────────────────┘
-```
+| # | Service | Kahan chalti hai | Kya karti hai |
+|---|---|---|---|
+| 1 | **Model Service** | Azure Container Apps | AI models (Pocket TTS + Kokoro) — asli awaaz banati hai |
+| 2 | **Backend** | Vercel | FastAPI — requests proxy karta hai, audio store karta hai |
+| 3 | **Frontend** | Vercel | Next.js — user jo screen dekhta hai |
 
-Teeno **free tier pe chal sakte hain**. Card sirf HuggingFace ke account verification ke liye chahiye ho sakta hai — is guide me **koi paid upgrade nahi** hai, aur free tier cross karne pe HF wait karata hai, bill nahi bhejta.
+Deploy order: **pehle Model Service → phir Backend → phir Frontend.** (Backend
+ko model service ka URL chahiye, frontend ko backend ka URL chahiye.)
 
 ---
 
-## Part 1 — HuggingFace Space (Model Service)
+## 🧩 Part 1 — Model Service (Azure Container Apps)
 
-### 1.1 Space banayein
+Models bhaari hain (PyTorch, ~GBs RAM) — inhe Vercel pe nahi chala sakte. Isliye
+yeh ek **Docker container** me Azure Container Apps pe chalte hain, **scale-to-zero**
+ke saath (idle ho to 0 replicas → koi credit kharch nahi).
 
-1. [huggingface.co/new-space](https://huggingface.co/new-space) pe jayein
-2. Settings:
-   - **Space name**: `voxclone-models` (ya koi bhi naam)
-   - **SDK**: Gradio
-   - **Hardware**: **CPU basic (free)** try karein
-   - **Visibility**: Public (private me HF_TOKEN chahiye)
+### 1.1 Image kaise banti hai (automatic)
 
-⚠️ **Agar CPU basic option na mile ya paid plan maange:** HF ne free accounts ke liye Gradio Space creation restrict kar diya hai — us soorat me **ZeroGPU** select karein, wo bhi free hai. Iske liye account "good standing" me hona chahiye: **email verified** aur **account 30 din se purana**.
+Azure free-trial khud Docker image build nahi kar sakta. Isliye image
+**GitHub Actions** banata hai (GitHub ke free runners pe) aur **GHCR** (GitHub
+Container Registry) pe push kar deta hai. Yeh `.github/workflows/build-model.yml`
+me set hai — jab bhi `model_service/**` me kuch change ho ke `main` pe push ho,
+image dobara ban ke `ghcr.io/<owner>/voxclone-models:latest` pe chali jaati hai.
 
-`app.py` dono hardware pe chalta hai — usme `@spaces.GPU` decorators lage hain jo CPU pe khud-ba-khud no-op ho jate hain, to koi code change nahi karna padega.
+**Ek dafa karna:** GHCR package ko **public** karo taake Azia bina password ke
+pull kar sake:
+> GitHub → apni profile → **Packages** → `voxclone-models` → **Package settings**
+> → **Change visibility** → **Public**.
 
-### 1.2 Voice cloning enable karein (zaroori)
+### 1.2 Azure pe deploy (ek dafa setup)
 
-Pocket TTS ke cloning weights **gated repo** me hain. Bina iske Space chalega, lekin `/clone` upload reject karega (generate + mix theek chalenge).
+[Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) install
+karke terminal me:
 
-1. [huggingface.co/kyutai/pocket-tts](https://huggingface.co/kyutai/pocket-tts) pe jaake **terms accept** karein
-2. [Settings → Access Tokens](https://huggingface.co/settings/tokens) se ek **read** token banayein
-3. Space me **Settings → Variables and secrets → New secret**:
-   - Name: `HF_TOKEN`
-   - Value: apna token
-
-⚠️ Token ko kabhi code me na likhein — sirf Space secret ke tor pe daalein.
-
-Space ke **Logs** me confirm karein: agar `WARNING: Pocket TTS loaded without voice-cloning weights` dikhe to token missing hai ya terms accept nahi hue.
-
-### 1.3 Files upload karein
-
-Space ke **Files** tab me jaake yeh 4 files upload karein (repo ke `hf_space/` folder se):
-
-- `app.py`
-- `requirements.txt`
-- `packages.txt`
-- `README.md`
-
-Ya git se push:
 ```bash
-git clone https://huggingface.co/spaces/<username>/voxclone-models
-cd voxclone-models
-cp ../Voice\ Clonnig\ App/hf_space/* .
-git add .
-git commit -m "Initial commit"
-git push
+# 1) Login
+az login
+
+# 2) Naam / settings (apne hisaab se badal sakte ho)
+RG=voxclone-rg
+ENV=voxclone-env
+APP=voxclone-models
+LOCATION=eastus
+IMAGE=ghcr.io/<owner>/voxclone-models:latest   # <owner> = tumhara GitHub username
+
+# 3) Resource group + Container Apps environment banao
+az group create --name $RG --location $LOCATION
+az containerapp env create --name $ENV --resource-group $RG --location $LOCATION
+
+# 4) Container app banao (public GHCR image se)
+az containerapp create \
+  --name $APP \
+  --resource-group $RG \
+  --environment $ENV \
+  --image $IMAGE \
+  --target-port 8000 \
+  --ingress external \
+  --min-replicas 0 \
+  --max-replicas 1 \
+  --cpu 2.0 --memory 4.0Gi \
+  --secrets model-api-key=<KOI_LAMBA_RANDOM_KEY> hf-token=<TUMHARA_HF_TOKEN> \
+  --env-vars MODEL_API_KEY=secretref:model-api-key HF_TOKEN=secretref:hf-token
 ```
 
-### 1.4 Build hone dein
+- `MODEL_API_KEY` = koi lamba random secret (tum banao). Yehi key backend me bhi
+  daalni hai — takki sirf tumhara backend model service ko call kar sake.
+- `HF_TOKEN` = HuggingFace token (models download karne ke liye).
+- `--min-replicas 0` = **scale-to-zero** (idle pe credit bachao).
 
-- Pehli baar 10-15 min lagenge (models download hote hain)
-- Build complete hone ke baad Space ka URL milega:
-  ```
-  https://<username>-voxclone-models.hf.space
-  ```
-- Yeh URL **backend me use hoga**
-
-**Models aur speed:**
-
-| Feature | Model | Size |
-|---|---|---|
-| Cloning | Pocket TTS (kyutai-labs, MIT) | 100M params |
-| Generate / Mix | Kokoro | 82M params |
-
-Dono chhote models hain aur **CPU pe theek chalte hain** — Pocket TTS ke authors ne khud likha hai ke GPU se koi speedup nahi milta (batch size 1 pe), aur wo sirf 2 CPU cores use karta hai (~6x real-time). Models startup pe load hote hain, isliye Space build ke baad requests fast hoti hain.
-
-⚠️ **Free tier ki limitations:**
-- Free hardware pe Space **48 hours idle** rehne ke baad sleep mode me chala jata hai — pehli request ke baad wake ho jayega
-- ZeroGPU use kar rahe hain to free account ko **5 min/day GPU quota** milta hai (sirf execution time count hota hai, idle nahi)
-
-
----
-
-## Part 2 — Backend (FastAPI on Vercel)
-
-### 2.1 MongoDB Atlas setup
-
-1. [mongodb.com/cloud/atlas/register](https://www.mongodb.com/cloud/atlas/register) pe free account banayein
-2. **Create Cluster** → M0 (free tier)
-3. **Database Access** → Add user (username + password save karein)
-4. **Network Access** → Add IP Address → `0.0.0.0/0` (allow all)
-5. **Connect** → Drivers → connection string copy karein:
-   ```
-   mongodb+srv://<user>:<password>@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority
-   ```
-
-### 2.2 Cloudinary setup
-
-1. [cloudinary.com/users/register_free](https://cloudinary.com/users/register_free) pe free account
-2. Dashboard se yeh 3 values copy karein:
-   - Cloud name
-   - API Key
-   - API Secret
-
-### 2.3 Vercel pe backend deploy
-
-1. [vercel.com](https://vercel.com) pe login karein (GitHub account se)
-2. **Add New** → **Project** → apna GitHub repo select karein
-3. **Root Directory** ko change karein: `backend`
-4. **Environment Variables** daalein:
-
-   | Variable | Value |
-   |---|---|
-   | `MONGODB_URI` | `mongodb+srv://...` (Atlas se) |
-   | `CLOUDINARY_CLOUD_NAME` | (Dashboard se) |
-   | `CLOUDINARY_API_KEY` | (Dashboard se) |
-   | `CLOUDINARY_API_SECRET` | (Dashboard se) |
-   | `HF_SPACE_URL` | `https://<username>-voxclone-models.hf.space` |
-   | `ALLOWED_ORIGINS` | `http://localhost:3000` (abhi frontend local hai) |
-
-5. **Deploy** button dabayein
-
-Backend URL milega:
+Deploy hone ke baad Azure ek **URL** dega, jaisa:
 ```
-https://voxclone-backend.vercel.app
+https://voxclone-models.<random>.eastus.azurecontainerapps.io
 ```
+Yeh URL note kar lo — Part 2 me `MODEL_SERVICE_URL` me jaayega.
 
-### 2.4 CORS theek karein (baad me)
+### 1.3 Baad me code update karne pe
 
-Jab frontend deploy ho jaye, Vercel dashboard me wapas jayein aur `ALLOWED_ORIGINS` me frontend ka URL add karein:
-```
-http://localhost:3000,https://your-frontend.vercel.app
+`model_service/` me change push karo → GitHub Action nayi image GHCR pe daal dega.
+Phir Azure ko nayi image kheenchne ke liye:
+
+```bash
+az containerapp update --name $APP --resource-group $RG --image $IMAGE
 ```
 
 ---
 
-## Part 3 — Frontend (Next.js on Vercel)
+## 🧩 Part 2 — Backend (FastAPI on Vercel)
 
-### 3.1 Vercel pe frontend deploy
+### 2.1 MongoDB Atlas (users + history)
 
-1. [vercel.com](https://vercel.com) pe **Add New** → **Project**
-2. Same repo select karein
-3. **Root Directory** ko change karein: `frontend`
-4. **Environment Variables**:
+1. [mongodb.com/atlas](https://www.mongodb.com/atlas) pe free **M0** cluster banao.
+2. **Database Access** → ek user banao (username + password).
+3. **Network Access** → `0.0.0.0/0` allow karo (Vercel kahin se bhi connect kare).
+4. **Connect → Drivers** se connection string copy karo:
+   `mongodb+srv://<user>:<password>@<cluster>/?retryWrites=true&w=majority`
 
-   | Variable | Value |
-   |---|---|
-   | `NEXT_PUBLIC_API_URL` | Backend URL (`https://voxclone-backend.vercel.app`) |
+### 2.2 Cloudinary (audio files)
 
-5. **Deploy**
+1. [cloudinary.com](https://cloudinary.com) pe free account banao.
+2. Dashboard se **Cloud name**, **API Key**, **API Secret** copy karo.
 
-Frontend URL milega:
-```
-https://voxclone.vercel.app
-```
+### 2.3 Vercel pe deploy
 
-### 3.2 Backend CORS update
+1. [vercel.com](https://vercel.com) pe GitHub repo import karo.
+2. **Root Directory = `backend`** set karo.
+3. **Environment Variables** me yeh sab daalo:
 
-Backend ke Vercel dashboard me jayein → **Settings** → **Environment Variables** → `ALLOWED_ORIGINS` edit karke frontend URL add karein:
-```
-http://localhost:3000,https://voxclone.vercel.app
-```
+| Variable | Value |
+|---|---|
+| `MONGODB_URI` | Atlas connection string (step 2.1) |
+| `CLOUDINARY_CLOUD_NAME` | Cloudinary cloud name |
+| `CLOUDINARY_API_KEY` | Cloudinary API key |
+| `CLOUDINARY_API_SECRET` | Cloudinary API secret |
+| `MODEL_SERVICE_URL` | Azure model service URL (Part 1.2 wala) |
+| `MODEL_API_KEY` | **Wohi** key jo Azure me daali thi (Part 1.2) |
+| `ALLOWED_ORIGINS` | Frontend URL (Part 3 ke baad set/update karna) |
 
-**Redeploy** button dabayein (settings save karne ke baad).
-
----
-
-## Testing
-
-1. Frontend URL kholen: `https://voxclone.vercel.app`
-2. **Register** → account banayein
-3. **Login** karein
-4. **Studio → Clone** pe jayein aur ek audio file upload karein
-
-Agar pehli request pe HF Space error aaye ("The model service may be starting up"), **1 minute wait karke retry** karein — Space cold start ho raha hoga.
+4. Deploy karo. Backend URL milega, jaisa `https://<project>.vercel.app`.
+5. Check: `https://<backend>/config-check` khol ke dekho sab keys `true` aa rahi hain
+   (yeh sirf batata hai key set hai ya nahi — asli value kabhi nahi dikhata).
 
 ---
 
-## Troubleshooting
+## 🧩 Part 3 — Frontend (Next.js on Vercel)
 
-### Backend pe 500 error
+1. Vercel pe **same repo** dobara import karo (naya project).
+2. **Root Directory = `frontend`** set karo.
+3. **Environment Variable**:
 
-- Vercel dashboard → **Deployments** → latest deployment → **Functions** tab → logs dekhein
-- MongoDB URI sahi hai? (Atlas me network access `0.0.0.0/0` allow hai?)
-- Cloudinary credentials valid hain?
+| Variable | Value |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | Backend ka URL (Part 2 wala) |
 
-### HF Space timeout ya slow
-
-- Space 48h se idle tha to pehli request wake-up me lagti hai — 1 min wait karke retry karein
-- Space URL browser me khol ke check karein ke wo live hai
-- Space ka "Logs" tab dekhein — build fail to nahi hui?
-- ZeroGPU pe hain aur "quota exceeded" aaye to daily 5 min khatam ho chuke hain (24h baad reset)
-
-### Demo se pehle (ehm)
-
-- Meet se **10 min pehle** ek generation chala lein — Space warm ho jayega
-- Backup ke tor pe local ready rakhein: `cd hf_space && pip install -r requirements.txt && python app.py`
-
-### CORS error (browser console me)
-
-- Backend ke `ALLOWED_ORIGINS` me frontend ka **exact URL** add karein (trailing slash mat dena)
-- Backend redeploy karein
+4. Deploy karo → frontend URL milega (yehi asli app hai).
+5. **Wapas jao Part 2 ke `ALLOWED_ORIGINS`** me yeh frontend URL daal do (CORS ke
+   liye), warna browser backend ko block kar dega. Comma se multiple bhi de sakte ho:
+   `https://<frontend>.vercel.app`
 
 ---
 
-## Cost Estimate (Monthly)
+## 🔐 Environment Variables — poori list
 
-| Service | Free tier limit | Paid tier (agar cross ho) |
-|---|---|---|
-| **HF Space (CPU basic)** | Always free (48h idle pe sleep) | CPU upgrade: $0.03/hr |
-| **HF Space (ZeroGPU)** | Free, 5 min/day GPU quota | PRO $9/mo (8x quota) |
-| **Vercel (Frontend)** | 100 GB bandwidth | Pro: $20/mo |
-| **Vercel (Backend)** | 100 GB-hrs serverless | Pro: $20/mo |
-| **MongoDB Atlas** | 512 MB storage | Shared: $9/mo |
-| **Cloudinary** | 25 GB storage, 25 GB bandwidth | Plus: $99/mo |
+**Backend (Vercel):**
+```
+MONGODB_URI=...
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+MODEL_SERVICE_URL=https://voxclone-models.<...>.azurecontainerapps.io
+MODEL_API_KEY=<same-as-azure>
+ALLOWED_ORIGINS=https://<frontend>.vercel.app
+```
 
-⚠️ **Jab tak normal hobbyist traffic hai, sab kuch free me chal jayega.** HF pe paisa tabhi katta hai jab aap PRO subscribe karein **aur** khud manually pre-paid credits add karein — free account pe quota khatam hone pe bas wait karna padta hai.
+**Frontend (Vercel):**
+```
+NEXT_PUBLIC_API_URL=https://<backend>.vercel.app
+```
+
+**Model Service (Azure Container App):**
+```
+MODEL_API_KEY=<same-as-backend>
+HF_TOKEN=<huggingface-token>
+```
+
+> ⚠️ **Secrets kabhi git me commit mat karna.** Local pe yeh `backend/.env` me
+> rehte hain (git-ignored). `backend/.env.example` sirf template hai — usme asli
+> value kabhi nahi. Production ki asli values sirf Vercel / Azure dashboard me.
 
 ---
 
-## Next Steps (Optional)
+## 💰 Cost / Credits bachana
 
-1. **Custom domain**: Vercel me Settings → Domains → apna domain add karein
-2. **GPU upgrade**: HF Space me Settings → Hardware → T4 GPU (paid, faster)
-3. **Analytics**: Vercel Analytics enable karein (free)
-4. **Error tracking**: Sentry integrate karein
+- Model service `--min-replicas 0` pe hai → koi request na ho to Azure use nahi
+  hoti (credit save). Pehli request pe container jaagta hai (thoda cold-start lag).
+- Backend + frontend Vercel ke free tier pe hain.
+- Fizool ka bill rokne ke liye Azure me **spending limit / budget alert** laga do.
 
-**GitHub repo public hai to Vercel auto-deploy karega** har commit pe. 🚀
+---
+
+## 🎙️ Voice Previews (optional, ek dafa)
+
+Voice cards pe ▶ preview clips **pehle se bane hue** (Cloudinary pe) hain, taake
+playback pe koi Azure compute kharch na ho. Naye voices add karo to dobara banane
+ke liye:
+
+```bash
+cd backend
+python gen_previews.py     # sab voices ke clips Cloudinary pe daal ke
+                           # frontend/src/lib/voicePreviews.ts likh deta hai
+```
+(Iske liye local `backend/.env` bhara hona chahiye + model service chalu ho.)
+
+---
+
+## 🩺 Troubleshooting
+
+| Problem | Wajah / Fix |
+|---|---|
+| Frontend pe "network / CORS error" | Backend ke `ALLOWED_ORIGINS` me frontend URL nahi hai → add karo |
+| Backend `/config-check` me koi key `false` | Woh env var Vercel me set nahi → daal ke redeploy |
+| Model calls fail (401 / unauthorized) | Backend aur Azure ki `MODEL_API_KEY` **same** honi chahiye |
+| Pehli request slow | Scale-to-zero cold start — normal hai, doosri request fast |
+| Azure image update nahi ho rahi | `az containerapp update --image ...` chalao (Part 1.3) |
+```
