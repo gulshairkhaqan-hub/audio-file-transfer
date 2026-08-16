@@ -148,7 +148,7 @@ export default function VoicesPage() {
               >
                 {/* Photo banner — scrim keeps the favourite star legible on any photo */}
                 <div className="relative">
-                  <VoicePhotoBanner voice={v} className="h-40 w-full" />
+                  <VoicePhotoBanner voice={v} className="aspect-[4/3] w-full" />
                   <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
                   <button
                     type="button"
