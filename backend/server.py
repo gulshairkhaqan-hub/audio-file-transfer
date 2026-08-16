@@ -107,6 +107,12 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class ChangePasswordRequest(BaseModel):
+    email: EmailStr
+    old_password: str
+    new_password: str
+
+
 class GenerateRequest(BaseModel):
     voice: str
     text: str
@@ -303,6 +309,29 @@ async def login(data: LoginRequest):
         "name": user["name"],
         "email": email,
     }
+
+
+@app.post("/change-password")
+async def change_password(data: ChangePasswordRequest):
+    """Change a user's password after verifying their current one."""
+    email = data.email.lower().strip()
+
+    if len(data.new_password) < 6:
+        return JSONResponse(status_code=400, content={"error": "New password must be at least 6 characters."})
+
+    user = users_collection.find_one({"email": email})
+    # Verify the current password first. Keep the message generic so this can't
+    # be used to probe which emails are registered.
+    if not user or not bcrypt.checkpw(data.old_password.encode("utf-8"), user["password"].encode("utf-8")):
+        return JSONResponse(status_code=401, content={"error": "Current password is incorrect."})
+
+    if data.new_password == data.old_password:
+        return JSONResponse(status_code=400, content={"error": "New password must differ from the current one."})
+
+    hashed = bcrypt.hashpw(data.new_password.encode("utf-8"), bcrypt.gensalt())
+    users_collection.update_one({"email": email}, {"$set": {"password": hashed.decode("utf-8")}})
+
+    return {"message": "Password changed successfully!"}
 
 @app.post("/receive")
 async def receive_files(files: List[UploadFile] = File(...), user_email: str = Form("")):

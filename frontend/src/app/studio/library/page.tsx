@@ -21,6 +21,7 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [deleting, setDeleting] = useState<string | null>(null); // url being deleted
 
   const load = useCallback(async () => {
     if (!user?.email) {
@@ -62,6 +63,21 @@ export default function LibraryPage() {
       success("Link copied to clipboard!");
     } catch {
       toastError("Couldn't copy — please copy manually.");
+    }
+  }
+
+  async function handleDelete(item: HistoryItem) {
+    if (!user?.email || deleting) return;
+    if (!window.confirm(`Delete "${item.name}"? This can't be undone.`)) return;
+    setDeleting(item.url);
+    try {
+      await api.deleteFile(item.name, user.email);
+      setItems((prev) => prev.filter((x) => x.url !== item.url));
+      success("Deleted.");
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : "Couldn't delete.");
+    } finally {
+      setDeleting(null);
     }
   }
 
@@ -169,6 +185,13 @@ export default function LibraryPage() {
                     >
                       Open in new tab
                     </a>
+                    <button
+                      onClick={() => handleDelete(item)}
+                      disabled={deleting === item.url}
+                      className="lift ml-auto rounded-xl border border-red-500/30 px-3.5 py-1.5 text-xs font-medium text-red-300/90 hover:border-red-500/60 hover:bg-red-500/10 disabled:opacity-50"
+                    >
+                      {deleting === item.url ? "Deleting…" : "🗑 Delete"}
+                    </button>
                   </div>
                 </div>
               );

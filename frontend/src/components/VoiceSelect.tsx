@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type Voice } from "@/lib/api";
 import { voiceTier } from "@/lib/useVoices";
+import { useFavourites } from "@/lib/favourites";
 import { VoiceAvatar, HdBadge } from "@/components/VoiceAvatar";
 
 type Gender = "all" | "female" | "male";
@@ -35,6 +36,8 @@ export default function VoiceSelect({
   const [gender, setGender] = useState<Gender>("all");
   const [accent, setAccent] = useState<Accent>("all");
   const [recommended, setRecommended] = useState(false);
+  const [favOnly, setFavOnly] = useState(false);
+  const { favs, isFavourite, toggleFavourite } = useFavourites();
   const rootRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
@@ -64,6 +67,7 @@ export default function VoiceSelect({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return voices.filter((v) => {
+      if (favOnly && !favs.has(v.id)) return false;
       if (gender !== "all" && v.gender !== gender) return false;
       if (accent !== "all" && v.accent !== accent) return false;
       if (recommended && voiceTier(v.id) !== "premium") return false;
@@ -71,7 +75,7 @@ export default function VoiceSelect({
         return false;
       return true;
     });
-  }, [voices, query, gender, accent, recommended]);
+  }, [voices, query, gender, accent, recommended, favOnly, favs]);
 
   function pick(id: string) {
     onChange(id);
@@ -136,14 +140,23 @@ export default function VoiceSelect({
             />
             <div className="mt-2 flex flex-wrap gap-1.5">
               <Chip
-                active={gender === "all" && accent === "all" && !recommended}
+                active={
+                  gender === "all" &&
+                  accent === "all" &&
+                  !recommended &&
+                  !favOnly
+                }
                 onClick={() => {
                   setGender("all");
                   setAccent("all");
                   setRecommended(false);
+                  setFavOnly(false);
                 }}
               >
                 All
+              </Chip>
+              <Chip active={favOnly} onClick={() => setFavOnly((v) => !v)}>
+                ★ Favourites
               </Chip>
               <Chip active={recommended} onClick={() => setRecommended((v) => !v)}>
                 ★ Recommended
@@ -188,49 +201,68 @@ export default function VoiceSelect({
               filtered.map((v) => {
                 const isSel = v.id === value;
                 const inUse = otherId && v.id === otherId;
+                const fav = isFavourite(v.id);
                 return (
-                  <button
+                  <div
                     key={v.id}
-                    type="button"
-                    onClick={() => pick(v.id)}
+                    role="option"
                     aria-selected={isSel}
-                    className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                    className={`flex w-full items-center rounded-lg pr-1 transition-colors ${
                       isSel ? "bg-accent/15" : "hover:bg-surface-2"
                     }`}
                   >
-                    <VoiceAvatar voice={v} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-foreground">
-                        {v.name}
-                        {voiceTier(v.id) === "premium" && <HdBadge />}
-                        {inUse && (
-                          <span className="ml-2 align-middle text-[10px] uppercase tracking-wide text-muted">
-                            in use
-                          </span>
-                        )}
+                    <button
+                      type="button"
+                      onClick={() => pick(v.id)}
+                      className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-2.5 py-2 text-left"
+                    >
+                      <VoiceAvatar voice={v} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-foreground">
+                          {v.name}
+                          {voiceTier(v.id) === "premium" && <HdBadge />}
+                          {inUse && (
+                            <span className="ml-2 align-middle text-[10px] uppercase tracking-wide text-muted">
+                              in use
+                            </span>
+                          )}
+                        </span>
+                        <span className="block truncate text-xs text-muted">
+                          {v.accent} · {v.gender}
+                        </span>
                       </span>
-                      <span className="block truncate text-xs text-muted">
-                        {v.accent} · {v.gender}
-                      </span>
-                    </span>
-                    {isSel && (
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        className="shrink-0 text-accent-2"
-                      >
-                        <path
-                          d="M20 6L9 17l-5-5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    )}
-                  </button>
+                      {isSel && (
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          className="shrink-0 text-accent-2"
+                        >
+                          <path
+                            d="M20 6L9 17l-5-5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleFavourite(v.id)}
+                      aria-label={fav ? "Remove favourite" : "Add favourite"}
+                      title={fav ? "Remove favourite" : "Add favourite"}
+                      className={`shrink-0 rounded-md px-1.5 py-1 text-base leading-none transition-colors ${
+                        fav
+                          ? "text-yellow-400"
+                          : "text-muted/50 hover:text-foreground"
+                      }`}
+                    >
+                      {fav ? "★" : "☆"}
+                    </button>
+                  </div>
                 );
               })
             )}

@@ -28,6 +28,13 @@ const NAV_GROUPS: {
       { href: "/studio/library", label: "My Library", icon: "📚" },
     ],
   },
+  {
+    title: "Account",
+    items: [
+      { href: "/studio/pricing", label: "Plans & Pricing", icon: "💳" },
+      { href: "/studio/settings", label: "Settings", icon: "⚙️" },
+    ],
+  },
 ];
 
 export default function StudioLayout({

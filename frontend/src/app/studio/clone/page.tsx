@@ -4,7 +4,7 @@
 // Upload a voice sample + type text → backend forwards to the HF Space (Pocket TTS),
 // stores the result on Cloudinary, and returns a shareable URL.
 import { useState } from "react";
-import { api } from "@/lib/api";
+import { api, MAX_TEXT_CHARS } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/components/Toast";
 import ResultPanel from "@/components/ResultPanel";
@@ -103,13 +103,23 @@ export default function ClonePage() {
         </div>
 
         <div className="space-y-1.5">
-          <label className="ml-1 text-xs uppercase tracking-widest text-muted">
-            Text to speak
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="ml-1 text-xs uppercase tracking-widest text-muted">
+              Text to speak
+            </label>
+            <span
+              className={`text-xs tabular-nums ${
+                text.length >= MAX_TEXT_CHARS ? "text-accent-2" : "text-muted/70"
+              }`}
+            >
+              {text.length}/{MAX_TEXT_CHARS}
+            </span>
+          </div>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={4}
+            maxLength={MAX_TEXT_CHARS}
             placeholder="Type what the cloned voice should say…"
             className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-3 text-sm text-foreground outline-none placeholder:text-muted/50"
           />

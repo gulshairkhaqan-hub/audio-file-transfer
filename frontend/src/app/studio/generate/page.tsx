@@ -4,7 +4,7 @@
 // Pick a preset voice + type text → backend calls Kokoro via the HF Space,
 // stores the result on Cloudinary, and returns a shareable URL.
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, MAX_TEXT_CHARS } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/components/Toast";
 import { useVoices } from "@/lib/useVoices";
@@ -92,7 +92,7 @@ export default function GeneratePage() {
 
       <form
         onSubmit={handleSubmit}
-        className="card-hover mt-6 space-y-5 rounded-2xl border border-white/10 bg-surface/80 p-6 shadow-2xl backdrop-blur-md"
+        className="card-hover relative z-20 mt-6 space-y-5 rounded-2xl border border-white/10 bg-surface/80 p-6 shadow-2xl backdrop-blur-md"
       >
         <div className="space-y-1.5">
           <label className="ml-1 text-xs uppercase tracking-widest text-muted">
@@ -107,13 +107,23 @@ export default function GeneratePage() {
         </div>
 
         <div className="space-y-1.5">
-          <label className="ml-1 text-xs uppercase tracking-widest text-muted">
-            Text to speak
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="ml-1 text-xs uppercase tracking-widest text-muted">
+              Text to speak
+            </label>
+            <span
+              className={`text-xs tabular-nums ${
+                text.length >= MAX_TEXT_CHARS ? "text-accent-2" : "text-muted/70"
+              }`}
+            >
+              {text.length}/{MAX_TEXT_CHARS}
+            </span>
+          </div>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={4}
+            maxLength={MAX_TEXT_CHARS}
             placeholder="Type what the voice should say…"
             className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-3 text-sm text-foreground outline-none placeholder:text-muted/50"
           />

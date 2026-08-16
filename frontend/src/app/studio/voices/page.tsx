@@ -7,6 +7,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useVoices, voiceTier } from "@/lib/useVoices";
+import { useFavourites } from "@/lib/favourites";
 import { VoiceAvatar, HdBadge } from "@/components/VoiceAvatar";
 
 export const PICK_VOICE_KEY = "voxclone_pick_voice";
@@ -17,14 +18,17 @@ type Accent = "all" | "American" | "British";
 export default function VoicesPage() {
   const router = useRouter();
   const { voices, loading, error } = useVoices();
+  const { isFavourite, toggleFavourite } = useFavourites();
   const [query, setQuery] = useState("");
   const [gender, setGender] = useState<Gender>("all");
   const [accent, setAccent] = useState<Accent>("all");
   const [recommended, setRecommended] = useState(false);
+  const [favOnly, setFavOnly] = useState(false);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return voices.filter((v) => {
+      if (favOnly && !isFavourite(v.id)) return false;
       if (gender !== "all" && v.gender !== gender) return false;
       if (accent !== "all" && v.accent !== accent) return false;
       if (recommended && voiceTier(v.id) !== "premium") return false;
@@ -32,7 +36,7 @@ export default function VoicesPage() {
         return false;
       return true;
     });
-  }, [voices, query, gender, accent, recommended]);
+  }, [voices, query, gender, accent, recommended, favOnly, isFavourite]);
 
   function selectVoice(id: string) {
     try {
@@ -62,14 +66,20 @@ export default function VoicesPage() {
         />
         <div className="flex flex-wrap gap-1.5">
           <Chip
-            active={gender === "all" && accent === "all" && !recommended}
+            active={
+              gender === "all" && accent === "all" && !recommended && !favOnly
+            }
             onClick={() => {
               setGender("all");
               setAccent("all");
               setRecommended(false);
+              setFavOnly(false);
             }}
           >
             All
+          </Chip>
+          <Chip active={favOnly} onClick={() => setFavOnly((v) => !v)}>
+            ★ Favourites
           </Chip>
           <Chip active={recommended} onClick={() => setRecommended((v) => !v)}>
             ★ Recommended
@@ -148,6 +158,23 @@ export default function VoicesPage() {
                       {v.accent} · {v.gender}
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleFavourite(v.id)}
+                    aria-label={
+                      isFavourite(v.id) ? "Remove favourite" : "Add favourite"
+                    }
+                    title={
+                      isFavourite(v.id) ? "Remove favourite" : "Add favourite"
+                    }
+                    className={`ml-auto shrink-0 rounded-md px-1.5 py-1 text-lg leading-none transition-colors ${
+                      isFavourite(v.id)
+                        ? "text-yellow-400"
+                        : "text-muted/50 hover:text-foreground"
+                    }`}
+                  >
+                    {isFavourite(v.id) ? "★" : "☆"}
+                  </button>
                 </div>
                 <button
                   onClick={() => selectVoice(v.id)}

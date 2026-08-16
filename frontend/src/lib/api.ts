@@ -8,6 +8,10 @@
 // opaque "Failed to fetch" — so warn loudly instead.
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
+// Longest script the backend accepts (mirrors MAX_TEXT_CHARS in server.py).
+// Used to cap the text inputs and drive the character counters.
+export const MAX_TEXT_CHARS = 1000;
+
 if (
   typeof window !== "undefined" &&
   !process.env.NEXT_PUBLIC_API_URL &&
@@ -75,6 +79,14 @@ export const api = {
 
   register: (name: string, email: string, password: string) =>
     postJSON<{ message: string }>("/register", { name, email, password }),
+
+  // Change the signed-in user's password (backend verifies the current one).
+  changePassword: (email: string, oldPassword: string, newPassword: string) =>
+    postJSON<{ message: string }>("/change-password", {
+      email,
+      old_password: oldPassword,
+      new_password: newPassword,
+    }),
 
   // Feature 1 — Voice Cloning: send a sample + text, get back the cloned audio URL.
   cloneVoice: ({
@@ -144,6 +156,23 @@ export const api = {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error || "Failed to load history");
     return (data?.history as HistoryItem[]) || [];
+  },
+
+  // Delete one of the user's creations — removes it from Cloudinary and Mongo.
+  // Scoped by email so a user can only delete their own files.
+  deleteFile: async (
+    name: string,
+    email: string
+  ): Promise<{ message: string }> => {
+    const res = await fetch(
+      `${API_URL}/files/${encodeURIComponent(
+        name
+      )}?user_email=${encodeURIComponent(email)}`,
+      { method: "DELETE" }
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error || "Failed to delete");
+    return data as { message: string };
   },
 };
 
