@@ -27,7 +27,7 @@ import soundfile as sf
 import torch
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
-from kokoro import KPipeline
+from kokoro import KModel, KPipeline
 from pocket_tts import TTSModel
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
@@ -106,10 +106,16 @@ _LANG_CODES = ("a", "b", "e", "f", "h", "i", "p")
 
 
 def _load_pipelines(codes: tuple[str, ...]) -> dict[str, KPipeline]:
+    # One shared KModel across every language. A KPipeline builds its own
+    # ~330MB model by default, so seven languages would load seven copies and
+    # blow past the container's memory limit (OOM / startup kill, exit 137).
+    # kokoro's own docs say to reuse a single KModel across pipelines — only the
+    # lightweight per-language g2p differs, so this is both correct and lean.
+    model = KModel().eval()
     loaded: dict[str, KPipeline] = {}
     for code in codes:
         try:
-            loaded[code] = KPipeline(lang_code=code)
+            loaded[code] = KPipeline(lang_code=code, model=model)
         except Exception as exc:  # noqa: BLE001 — degrade gracefully, don't crash
             print(f"[kokoro] skipping language '{code}': {exc}", flush=True)
     return loaded
