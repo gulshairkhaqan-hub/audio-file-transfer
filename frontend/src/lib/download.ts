@@ -1,7 +1,4 @@
-// Force-download an audio URL as a file. Cloudinary serves our clips with
-// permissive CORS, so we can fetch the bytes and save them with a real
-// filename. If the fetch is ever blocked, fall back to opening the URL so the
-// user is never left with a dead button.
+
 export async function downloadAudio(url: string, filename: string) {
   try {
     const res = await fetch(url);
@@ -20,7 +17,6 @@ export async function downloadAudio(url: string, filename: string) {
   }
 }
 
-/** Turn a display name into a safe .wav filename. */
 export function toAudioFilename(name: string) {
   const base = (name || "voxclone-audio")
     .replace(/\.[^.]+$/, "")

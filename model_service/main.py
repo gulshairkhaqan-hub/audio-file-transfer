@@ -1,23 +1,3 @@
-"""VoxClone model service — Pocket TTS (cloning) + Kokoro (presets, blending).
-
-A plain REST service, deployed as a container on Azure Container Apps. The
-FastAPI backend on Vercel calls these three endpoints over HTTP; keeping the
-models here is what lets that backend stay free of PyTorch and small enough
-for serverless.
-
-    POST /clone     multipart: audio, text              -> audio/wav
-    POST /generate  json: voice, text                   -> audio/wav
-    POST /mix       json: voice_a, voice_b, blend, text -> audio/wav
-    GET  /health                                        -> {"status": "ok"}
-
-Both models are small (Pocket TTS 100M, Kokoro 82M) and CPU-only — Pocket
-TTS's authors measured no speedup from a GPU at batch size 1, so this needs
-no GPU hardware.
-
-Models load at import time, not lazily. Container Apps scales this to zero
-when idle, so a cold start already pays for a container boot; deferring the
-model load would just move that cost into the first user's request instead.
-"""
 import os
 import tempfile
 from typing import Annotated
@@ -33,20 +13,7 @@ from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
 MAX_TEXT_CHARS = 1000
-
-# Set as an Azure Container Apps secret. Left unset, the service refuses every
-# model call — an open endpoint on a public URL would let anyone spend the
-# subscription's compute grant.
 MODEL_API_KEY = os.getenv("MODEL_API_KEY", "")
-
-# ── Preset voices ─────────────────────────────────────────────────────────────
-# Kokoro's built-in voices across the languages we load: American ("a") and
-# British ("b") English work with zero extra deps; Spanish/French/Hindi/Italian/
-# Portuguese are phonemized via espeak-ng. Keys are Kokoro's internal voice ids
-# (prefix = language + gender); values are the UI label. English is ordered
-# best-first by Kokoro's own quality grades. Must stay in sync with VOICES in
-# backend/server.py — and voices for a language that fails to load are dropped
-# below, so this is the *superset* of what /voices may advertise.
 VOICES = {
     "af_heart": "Sophia — American, female",
     "af_bella": "Bella — American, female",
@@ -76,11 +43,6 @@ VOICES = {
     "bm_daniel": "Daniel — British, male",
     "am_santa": "Santa — American, male",
     "am_adam": "Adam — American, male",
-    # ── Additional languages (phonemized via espeak-ng, installed in the image).
-    # These are loaded with graceful degradation below: if a language's pipeline
-    # fails to initialise, its voices are dropped from VOICES so the service
-    # still starts and English keeps working. Must stay in sync with
-    # backend/server.py. ──
     "ef_dora": "Dora — Spanish, female",
     "em_alex": "Alex — Spanish, male",
     "em_santa": "Santa — Spanish, male",
@@ -95,36 +57,22 @@ VOICES = {
     "pm_alex": "Alex — Portuguese, male",
     "pm_santa": "Santa — Portuguese, male",
 }
-
-# Language pipelines are built up front (a cold start already pays for a
-# container boot, so lazy loading would just move the cost to the first request).
-# English ("a"/"b") uses misaki[en]; the other languages go through espeak-ng.
-# Each pipeline is built in isolation: if one fails to initialise — e.g. a
-# missing phonemizer dependency for a language — we log it and skip it rather
-# than letting the whole service fail to start.
 _LANG_CODES = ("a", "b", "e", "f", "h", "i", "p")
 
 
 def _load_pipelines(codes: tuple[str, ...]) -> dict[str, KPipeline]:
-    # One shared KModel across every language. A KPipeline builds its own
-    # ~330MB model by default, so seven languages would load seven copies and
-    # blow past the container's memory limit (OOM / startup kill, exit 137).
-    # kokoro's own docs say to reuse a single KModel across pipelines — only the
-    # lightweight per-language g2p differs, so this is both correct and lean.
+
     model = KModel().eval()
     loaded: dict[str, KPipeline] = {}
     for code in codes:
         try:
             loaded[code] = KPipeline(lang_code=code, model=model)
-        except Exception as exc:  # noqa: BLE001 — degrade gracefully, don't crash
+        except Exception as exc: 
             print(f"[kokoro] skipping language '{code}': {exc}", flush=True)
     return loaded
 
 
 _kokoro = _load_pipelines(_LANG_CODES)
-
-# Drop any voice whose language pipeline didn't load, so /voices and validation
-# only ever advertise voices that actually work.
 VOICES = {vid: label for vid, label in VOICES.items() if vid and vid[0] in _kokoro}
 
 _pocket = TTSModel.load_model()
@@ -208,12 +156,6 @@ def _wav_response(path: str) -> FileResponse:
 
 
 def _kokoro_speak(pipeline, text: str, voice, speed: float = 1.0) -> str:
-    """Run Kokoro and concatenate its chunks into one 24kHz wav.
-
-    `voice` is either a voice id string or a pre-loaded embedding tensor —
-    KPipeline accepts both, which is what makes blending possible. `speed`
-    scales the talking rate (1.0 = normal; <1 slower, >1 faster).
-    """
     chunks = [out.audio for out in pipeline(text, voice=voice, speed=speed)]
     if not chunks:
         raise HTTPException(status_code=500, detail="The model produced no audio.")
@@ -222,7 +164,6 @@ def _kokoro_speak(pipeline, text: str, voice, speed: float = 1.0) -> str:
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    """Unauthenticated so Container Apps health probes can reach it."""
     return {"status": "ok"}
 
 
@@ -236,12 +177,7 @@ async def clone(
     audio: Annotated[UploadFile, File()],
     text: Annotated[str, Form()],
 ) -> FileResponse:
-    """Clone the voice in `audio` and speak `text` in it.
-
-    Pocket TTS splits this into two steps: build a "voice state" from the
-    sample, then generate against it. The state build is the slow half, and
-    it's specific to this upload, so there's nothing to cache across requests.
-    """
+   
     text = _clean_text(text)
 
     suffix = os.path.splitext(audio.filename or "")[1] or ".wav"

@@ -1,7 +1,5 @@
 "use client";
 
-// Lightweight auth context — stores the logged-in user in localStorage so the
-// session survives refreshes. This mirrors the old Streamlit session_state.
 import {
   createContext,
   useContext,
@@ -32,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) setUser(JSON.parse(raw));
     } catch {
-      // ignore malformed storage
+      
     }
     setLoading(false);
   }, []);

@@ -31,7 +31,6 @@ const NAV_GROUPS: {
   {
     title: "Account",
     items: [
-      { href: "/studio/pricing", label: "Plans & Pricing", icon: "💳" },
       { href: "/studio/settings", label: "Settings", icon: "⚙️" },
     ],
   },

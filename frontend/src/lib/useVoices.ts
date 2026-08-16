@@ -1,8 +1,4 @@
 "use client";
-
-// Loads the preset voice list from the backend once per mount. Shared by the
-// generate and mix features. Falls back to an empty list on failure — the
-// pages surface that as a disabled form rather than a crash.
 import { useEffect, useState } from "react";
 import { api, type Voice } from "@/lib/api";
 
@@ -35,14 +31,10 @@ export function useVoices() {
   return { voices, loading, error };
 }
 
-/** "Sophia — American, female" for a dropdown option label. */
 export function voiceLabel(v: Voice) {
   return `${v.name} — ${v.accent}, ${v.gender}`;
 }
 
-/** Quality bucket, from Kokoro's own published voice grades. Presentational
- *  only — powers the "HD" badge and the "Recommended" filter. The backend
- *  already returns voices best-first, so this never affects ordering. */
 export type VoiceTier = "premium" | "standard" | "basic";
 
 const PREMIUM = new Set(["af_heart", "af_bella", "bf_emma", "af_nicole"]);

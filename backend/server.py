@@ -19,9 +19,7 @@ from pymongo import MongoClient
 
 app = FastAPI(title="VoxClone API")
 
-# ── CORS ─────────────────────────────────────────────────────────────────────
-# Allow the Next.js frontend (local dev + deployed) to call this API from the browser.
-# Set ALLOWED_ORIGINS in .env as a comma-separated list for production (Vercel URL).
+
 _origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
 app.add_middleware(
     CORSMiddleware,
@@ -31,7 +29,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Cloudinary config ──────────────────────────────────────────────────────────
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
     api_key=os.getenv("CLOUDINARY_API_KEY"),
@@ -39,29 +36,16 @@ cloudinary.config(
     secure=True,
 )
 
-# ── MongoDB config ─────────────────────────────────────────────────────────────
 mongo_client = MongoClient(os.getenv("MONGODB_URI"))
 db = mongo_client["audio_transfer"]
 uploads_collection = db["uploads"]
 users_collection = db["users"]
 UPLOAD_FOLDER = "audio_uploads"
 
-# ── Model service (Azure Container Apps) config ─────────────────────────────────
-# The model service runs Pocket TTS (cloning) and Kokoro (presets + blending) as a
-# plain REST API. This backend loads no PyTorch — it just forwards HTTP calls, which
-# is what keeps it small enough for a serverless deploy. Set MODEL_SERVICE_URL to the
-# service URL (e.g. "https://voxclone-models.<region>.azurecontainerapps.io") and
-# MODEL_API_KEY to the shared key the service checks via the X-API-Key header.
 MODEL_SERVICE_URL = os.getenv("MODEL_SERVICE_URL", "").rstrip("/")
 MODEL_API_KEY = os.getenv("MODEL_API_KEY", "")
-
-# When the service is scaled to zero, the first call cold-starts the container
-# (model load) and can take ~40-90s; warm calls return in a few seconds. Keep this
-# generous, but note the platform (e.g. Vercel) may impose its own shorter limit.
 MODEL_TIMEOUT_SECONDS = 120
 
-# Preset voices offered by the /generate and /mix features. Must stay in sync
-# with VOICES in model_service/main.py — the service rejects ids it doesn't know.
 VOICES = [
     {"id": "af_heart", "name": "Sophia", "accent": "American", "gender": "female"},
     {"id": "af_bella", "name": "Bella", "accent": "American", "gender": "female"},
@@ -91,9 +75,7 @@ VOICES = [
     {"id": "bm_daniel", "name": "Daniel", "accent": "British", "gender": "male"},
     {"id": "am_santa", "name": "Santa", "accent": "American", "gender": "male"},
     {"id": "am_adam", "name": "Adam", "accent": "American", "gender": "male"},
-    # ── Additional languages (Kokoro, phonemized via espeak-ng). The model
-    # service drops any whose pipeline fails to load, so it's the authority;
-    # this list must stay in sync with VOICES in model_service/main.py. ──
+
     {"id": "ef_dora", "name": "Dora", "accent": "Spanish", "gender": "female"},
     {"id": "em_alex", "name": "Alex", "accent": "Spanish", "gender": "male"},
     {"id": "em_santa", "name": "Santa", "accent": "Spanish", "gender": "male"},
@@ -112,9 +94,6 @@ VOICE_IDS = {v["id"] for v in VOICES}
 
 MAX_TEXT_CHARS = 1000
 
-# Talking-rate bounds for /generate and /mix. Mirrors the ge/le on the model
-# service's request models (model_service/main.py); out-of-range values are
-# clamped rather than rejected so a slider glitch never fails a request.
 MIN_SPEED = 0.5
 MAX_SPEED = 2.0
 
@@ -202,8 +181,7 @@ def _request_audio(path: str, *, json=None, data=None, files=None):
         return _space_failed()
 
     if resp.status_code != 200:
-        # Pass through the service's own 400 message (e.g. unknown voice); hide
-        # every other status behind a generic "try again" so nothing leaks.
+
         if resp.status_code == 400:
             try:
                 detail = resp.json().get("detail")
@@ -326,12 +304,11 @@ async def register(data: RegisterRequest):
 
 @app.post("/login")
 async def login(data: LoginRequest):
-    # Normalize email
+
     email = data.email.lower().strip()
 
     user = users_collection.find_one({"email": email})
-    # Use one generic message for both unknown-email and wrong-password
-    # so the endpoint doesn't reveal which emails are registered.
+
     if not user or not bcrypt.checkpw(data.password.encode("utf-8"), user["password"].encode("utf-8")):
         return JSONResponse(status_code=401, content={"error": "Invalid email or password."})
 
@@ -351,8 +328,7 @@ async def change_password(data: ChangePasswordRequest):
         return JSONResponse(status_code=400, content={"error": "New password must be at least 6 characters."})
 
     user = users_collection.find_one({"email": email})
-    # Verify the current password first. Keep the message generic so this can't
-    # be used to probe which emails are registered.
+
     if not user or not bcrypt.checkpw(data.old_password.encode("utf-8"), user["password"].encode("utf-8")):
         return JSONResponse(status_code=401, content={"error": "Current password is incorrect."})
 
@@ -371,10 +347,10 @@ async def receive_files(files: List[UploadFile] = File(...), user_email: str = F
     for file in files:
         base_name = os.path.splitext(os.path.basename(file.filename))[0]
 
-        # Namespace the public_id per user so files from different users never collide.
+        
         public_id = f"{prefix}/{base_name}"
 
-        # Upload to Cloudinary
+    
         result = cloudinary.uploader.upload(
             file.file,
             resource_type="video",
@@ -385,10 +361,8 @@ async def receive_files(files: List[UploadFile] = File(...), user_email: str = F
 
         name = f"{base_name}.{result['format']}"
         url  = result["secure_url"]
-        # Cloudinary's returned public_id includes the folder; store it so delete can reconstruct it.
         stored_public_id = result.get("public_id", f"{UPLOAD_FOLDER}/{public_id}")
 
-        # Save record to MongoDB with user_email for ownership tracking
         uploads_collection.update_one(
             {"name": name, "user_email": user_email},
             {"$set": {

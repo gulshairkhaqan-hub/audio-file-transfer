@@ -1,20 +1,3 @@
-"""One-time: make a short spoken sample per preset voice for the ▶ preview
-button, upload each to Cloudinary under a fixed public_id, and emit the static
-map at frontend/src/lib/voicePreviews.ts.
-
-Why a script and not a runtime call: previews never change, so generating them
-once and serving static Cloudinary clips means the ▶ button costs nothing at
-runtime (no model call, no Azure spend per click).
-
-Re-runnable: overwrite=True refreshes the same assets — no duplicates, and
-previews live in their own `voice_previews/` folder and are never written to
-MongoDB, so this doesn't touch user history. Run from backend/:
-
-    python gen_previews.py
-
-Reuses backend/.env + the model-service and Cloudinary wiring already in
-server.py, so no secrets live here.
-"""
 import json
 import os
 import time

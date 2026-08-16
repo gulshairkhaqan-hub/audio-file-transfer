@@ -1,19 +1,6 @@
-// Central API client — talks to the FastAPI backend.
-// Base URL comes from env so we can point at localhost in dev and the
-// deployed backend in production (set NEXT_PUBLIC_API_URL in Vercel).
-//
-// NEXT_PUBLIC_* is inlined at BUILD time, so changing it in Vercel requires a
-// redeploy. If it's missing in a production build the localhost fallback would
-// silently point the browser at the user's own machine, which surfaces as an
-// opaque "Failed to fetch" — so warn loudly instead.
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-
-// Longest script the backend accepts (mirrors MAX_TEXT_CHARS in server.py).
-// Used to cap the text inputs and drive the character counters.
 export const MAX_TEXT_CHARS = 1000;
-
-// Talking-rate bounds for the generate + mix speed sliders. Mirrors MIN_SPEED/
-// MAX_SPEED in server.py (and the ge/le on the model service request models).
 export const MIN_SPEED = 0.5;
 export const MAX_SPEED = 2.0;
 export const DEFAULT_SPEED = 1.0;
@@ -71,7 +58,6 @@ async function postJSON<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function postForm<T>(path: string, form: FormData): Promise<T> {
-  // No Content-Type header — the browser sets the multipart boundary itself.
   const res = await fetch(`${API_URL}${path}`, { method: "POST", body: form });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -95,7 +81,7 @@ export const api = {
       new_password: newPassword,
     }),
 
-  // Feature 1 — Voice Cloning: send a sample + text, get back the cloned audio URL.
+  
   cloneVoice: ({
     audio,
     text,
@@ -112,8 +98,6 @@ export const api = {
     return postForm<CloneResult>("/clone", form);
   },
 
-  // Feature 2 — Voice Generation: pick a preset voice + text, get audio back.
-  // `speed` scales the talking rate (1.0 = normal); defaults to normal.
   generateVoice: ({
     voice,
     text,
@@ -132,9 +116,6 @@ export const api = {
       user_email: email,
     }),
 
-  // Feature 3 — Voice Mixing: blend two preset voices, then speak `text`.
-  // `blend` is voice A's weight: 1.0 = all A, 0.0 = all B. `speed` scales the
-  // talking rate (1.0 = normal).
   mixVoices: ({
     voiceA,
     voiceB,
@@ -159,7 +140,6 @@ export const api = {
       user_email: email,
     }),
 
-  // Preset voices available to the generate + mix features.
   voices: async (): Promise<Voice[]> => {
     const res = await fetch(`${API_URL}/voices`);
     const data = await res.json().catch(() => ({}));
@@ -167,7 +147,6 @@ export const api = {
     return (data?.voices as Voice[]) || [];
   },
 
-  // Per-user upload/clone history from MongoDB.
   history: async (email: string): Promise<HistoryItem[]> => {
     const res = await fetch(
       `${API_URL}/history?user_email=${encodeURIComponent(email)}`
@@ -177,8 +156,6 @@ export const api = {
     return (data?.history as HistoryItem[]) || [];
   },
 
-  // Delete one of the user's creations — removes it from Cloudinary and Mongo.
-  // Scoped by email so a user can only delete their own files.
   deleteFile: async (
     name: string,
     email: string

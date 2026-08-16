@@ -1,9 +1,5 @@
 name: Build model service image
 
-# Builds the VoxClone model_service (Kokoro + Pocket TTS) container image on
-# GitHub's free runners and pushes it to GitHub Container Registry (GHCR).
-# Azure Container Apps then pulls this prebuilt image — no ACR Tasks needed,
-# which is why this works on an Azure free-trial subscription.
 
 on:
   push:
