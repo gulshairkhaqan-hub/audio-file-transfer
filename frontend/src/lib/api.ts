@@ -1,6 +1,6 @@
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
-export const MAX_TEXT_CHARS = 1000;
+export const MAX_TEXT_CHARS = 2000;
 export const MIN_SPEED = 0.5;
 export const MAX_SPEED = 2.0;
 export const DEFAULT_SPEED = 1.0;

@@ -1,21 +1,22 @@
 import os
 import tempfile
+import time
 from pathlib import Path
 from dotenv import load_dotenv
 import re
 import bcrypt
 from pydantic import BaseModel, EmailStr
 load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=False)
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import cloudinary
 import cloudinary.uploader
 import cloudinary.api
 import requests
-from pymongo import MongoClient
+from pymongo import MongoClient, ReturnDocument
 
 app = FastAPI(title="VoxClone API")
 
@@ -40,6 +41,21 @@ mongo_client = MongoClient(os.getenv("MONGODB_URI"))
 db = mongo_client["audio_transfer"]
 uploads_collection = db["uploads"]
 users_collection = db["users"]
+
+# Rate limiting lives in Mongo because Vercel functions are stateless — there's
+# no shared in-process memory across invocations. A TTL index auto-expires old
+# counter buckets so the collection doesn't grow forever.
+rate_limits_collection = db["rate_limits"]
+try:
+    rate_limits_collection.create_index("expireAt", expireAfterSeconds=0)
+except Exception:
+    pass
+
+# Heavy (model-calling) endpoints: this many requests per user per window. Keeps
+# a runaway client from burning Azure compute credits.
+RATE_LIMIT_MAX = 20
+RATE_LIMIT_WINDOW_SECONDS = 60
+
 UPLOAD_FOLDER = "audio_uploads"
 
 MODEL_SERVICE_URL = os.getenv("MODEL_SERVICE_URL", "").rstrip("/")
@@ -92,7 +108,7 @@ VOICES = [
 ]
 VOICE_IDS = {v["id"] for v in VOICES}
 
-MAX_TEXT_CHARS = 1000
+MAX_TEXT_CHARS = 2000
 
 MIN_SPEED = 0.5
 MAX_SPEED = 2.0
@@ -103,6 +119,48 @@ def _clamp_speed(speed: float) -> float:
         return max(MIN_SPEED, min(MAX_SPEED, float(speed)))
     except (TypeError, ValueError):
         return 1.0
+
+
+def _client_key(user_email: str, request: Request) -> str:
+    """Identify the caller for rate limiting: prefer their email, fall back to IP."""
+    email = (user_email or "").strip().lower()
+    if email:
+        return email
+    return request.client.host if request.client else "anon"
+
+
+def _rate_limited(key: str) -> bool:
+    """Fixed-window limiter backed by Mongo. Returns True once `key` has spent
+    its budget for the current window.
+
+    ponytail: fixed window (a burst can straddle two windows) + Mongo round-trip
+    per call. Fine at this scale; swap for Redis/sliding-window if traffic grows.
+    """
+    bucket = int(time.time()) // RATE_LIMIT_WINDOW_SECONDS
+    try:
+        doc = rate_limits_collection.find_one_and_update(
+            {"_id": f"{key}:{bucket}"},
+            {
+                "$inc": {"count": 1},
+                "$setOnInsert": {
+                    "expireAt": datetime.now(timezone.utc)
+                    + timedelta(seconds=RATE_LIMIT_WINDOW_SECONDS * 2)
+                },
+            },
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+    except Exception:
+        # Never let a limiter hiccup block a real request — fail open.
+        return False
+    return doc.get("count", 1) > RATE_LIMIT_MAX
+
+
+def _too_many():
+    return JSONResponse(
+        status_code=429,
+        content={"error": "Too many requests — please wait a minute before generating again."},
+    )
 
 
 class RegisterRequest(BaseModel):
@@ -385,12 +443,16 @@ async def receive_files(files: List[UploadFile] = File(...), user_email: str = F
 
 @app.post("/clone")
 async def clone_voice(
+    request: Request,
     audio: UploadFile = File(...),
     text: str = Form(...),
     user_email: str = Form(""),
 ):
     """Voice cloning: forward the sample + text to the model service (Pocket TTS),
     upload the generated audio to Cloudinary, record it, and return the URL."""
+    if _rate_limited(f"heavy:{_client_key(user_email, request)}"):
+        return _too_many()
+
     err = _validate_text(text)
     if err:
         return err
@@ -411,8 +473,11 @@ async def clone_voice(
 
 
 @app.post("/generate")
-async def generate_voice(data: GenerateRequest):
+async def generate_voice(data: GenerateRequest, request: Request):
     """Preset-voice generation: call the model service (Kokoro), upload the result."""
+    if _rate_limited(f"heavy:{_client_key(data.user_email, request)}"):
+        return _too_many()
+
     err = _validate_text(data.text)
     if err:
         return err
@@ -431,8 +496,11 @@ async def generate_voice(data: GenerateRequest):
 
 
 @app.post("/mix")
-async def mix_voices(data: MixRequest):
+async def mix_voices(data: MixRequest, request: Request):
     """Voice mixing: blend two Kokoro voice embeddings and speak `text` in the result."""
+    if _rate_limited(f"heavy:{_client_key(data.user_email, request)}"):
+        return _too_many()
+
     err = _validate_text(data.text)
     if err:
         return err

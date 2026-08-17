@@ -12,7 +12,9 @@ from pocket_tts import TTSModel
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 
-MAX_TEXT_CHARS = 1000
+from textchunk import chunk_text
+
+MAX_TEXT_CHARS = 2000
 MODEL_API_KEY = os.getenv("MODEL_API_KEY", "")
 VOICES = {
     "af_heart": "Sophia — American, female",
@@ -135,13 +137,34 @@ def _unlink(path: str) -> None:
         pass
 
 
-def _write_wav(audio, sample_rate: int) -> str:
-    """Persist a waveform to a temp .wav and return its path."""
+def _to_np(audio) -> np.ndarray:
+    """Coerce a model's audio output (torch tensor or array) to a 1-D float32 array."""
     if isinstance(audio, torch.Tensor):
         audio = audio.detach().cpu().numpy()
-    audio = np.asarray(audio, dtype=np.float32).squeeze()
+    return np.asarray(audio, dtype=np.float32).squeeze()
+
+
+def _join(parts: list[np.ndarray], sample_rate: int) -> np.ndarray:
+    """Concatenate per-chunk waveforms with a short silence between them, so
+    stitched long-form speech doesn't sound abruptly spliced."""
+    parts = [p for p in parts if p.size]
+    if not parts:
+        raise HTTPException(status_code=500, detail="The model produced no audio.")
+    if len(parts) == 1:
+        return parts[0]
+    gap = np.zeros(int(0.15 * sample_rate), dtype=np.float32)
+    stitched: list[np.ndarray] = []
+    for i, p in enumerate(parts):
+        if i:
+            stitched.append(gap)
+        stitched.append(p)
+    return np.concatenate(stitched)
+
+
+def _write_wav(audio, sample_rate: int) -> str:
+    """Persist a waveform to a temp .wav and return its path."""
     path = tempfile.NamedTemporaryFile(delete=False, suffix=".wav").name
-    sf.write(path, audio, sample_rate)
+    sf.write(path, _to_np(audio), sample_rate)
     return path
 
 
@@ -156,10 +179,14 @@ def _wav_response(path: str) -> FileResponse:
 
 
 def _kokoro_speak(pipeline, text: str, voice, speed: float = 1.0) -> str:
-    chunks = [out.audio for out in pipeline(text, voice=voice, speed=speed)]
-    if not chunks:
-        raise HTTPException(status_code=500, detail="The model produced no audio.")
-    return _write_wav(np.concatenate([np.asarray(c).squeeze() for c in chunks]), 24000)
+    # Split long text into sentence-sized pieces so nothing gets truncated,
+    # then stitch each piece's audio back together.
+    parts = [
+        _to_np(out.audio)
+        for piece in chunk_text(text)
+        for out in pipeline(piece, voice=voice, speed=speed)
+    ]
+    return _write_wav(_join(parts, 24000), 24000)
 
 
 @app.get("/health")
@@ -187,11 +214,16 @@ async def clone(
 
     try:
         voice_state = _pocket.get_state_for_audio_prompt(sample_path)
-        generated = _pocket.generate_audio(voice_state, text)
+        # Chunk long text so the clone voice speaks the whole thing, not just
+        # the first sentence it fits.
+        parts = [
+            _to_np(_pocket.generate_audio(voice_state, piece))
+            for piece in chunk_text(text)
+        ]
     finally:
         _unlink(sample_path)
 
-    return _wav_response(_write_wav(generated, _pocket.sample_rate))
+    return _wav_response(_write_wav(_join(parts, _pocket.sample_rate), _pocket.sample_rate))
 
 
 @app.post("/generate", dependencies=auth)

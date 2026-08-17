@@ -1,7 +1,16 @@
 
+// Cloudinary stores our audio as WAV under /video/upload/. Inserting the f_mp3
+// (format) transform makes Cloudinary transcode + deliver MP3 on the fly —
+// smaller file, no extra storage. Non-Cloudinary URLs pass through unchanged.
+export function toMp3Url(url: string): string {
+  if (!url.includes("res.cloudinary.com") || !url.includes("/upload/")) return url;
+  return url.replace("/upload/", "/upload/f_mp3/");
+}
+
 export async function downloadAudio(url: string, filename: string) {
+  const src = toMp3Url(url);
   try {
-    const res = await fetch(url);
+    const res = await fetch(src);
     if (!res.ok) throw new Error("fetch failed");
     const blob = await res.blob();
     const objectUrl = URL.createObjectURL(blob);
@@ -13,7 +22,7 @@ export async function downloadAudio(url: string, filename: string) {
     a.remove();
     URL.revokeObjectURL(objectUrl);
   } catch {
-    window.open(url, "_blank", "noopener,noreferrer");
+    window.open(src, "_blank", "noopener,noreferrer");
   }
 }
 
@@ -23,5 +32,5 @@ export function toAudioFilename(name: string) {
     .replace(/[^a-z0-9-_]+/gi, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 60) || "voxclone-audio";
-  return `${base}.wav`;
+  return `${base}.mp3`;
 }
