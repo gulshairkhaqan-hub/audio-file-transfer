@@ -27,7 +27,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await api.login(email, password);
-      login({ name: res.name, email: res.email });
+      login({ name: res.name, email: res.email, token: res.token });
       router.replace("/studio");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");

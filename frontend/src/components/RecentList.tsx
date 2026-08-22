@@ -27,7 +27,7 @@ export default function RecentList({
   const load = useCallback(async () => {
     if (!user?.email) return;
     try {
-      const all = await api.history(user.email);
+      const all = await api.history();
       // Records created before `kind` was tracked have no kind — keep them
       // only in the unfiltered view so nothing silently disappears.
       setItems(kind ? all.filter((i) => i.kind === kind) : all);

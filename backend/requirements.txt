@@ -7,3 +7,4 @@ pymongo[srv]
 python-dotenv
 bcrypt
 pydantic[email]
+PyJWT

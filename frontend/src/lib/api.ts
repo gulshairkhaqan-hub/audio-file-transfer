@@ -23,7 +23,43 @@ export type LoginResult = {
   message: string;
   name: string;
   email: string;
+  token: string;
 };
+
+// ── Stored session ────────────────────────────────────────────────────────────
+// One localStorage key holds the whole session, so auth.tsx (React state) and
+// this module (fetch headers) can never disagree about who is signed in.
+const STORAGE_KEY = "voxclone_user";
+
+export type StoredAuth = { name: string; email: string; token: string };
+
+export function loadAuth(): StoredAuth | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredAuth>;
+    // A session saved before tokens existed can't authenticate anything —
+    // treat it as signed out so the user is sent to /login once.
+    if (!parsed?.email || !parsed?.token) return null;
+    return { name: parsed.name || "", email: parsed.email, token: parsed.token };
+  } catch {
+    return null;
+  }
+}
+
+export function saveAuth(auth: StoredAuth) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(auth));
+}
+
+export function clearAuth() {
+  if (typeof window !== "undefined") localStorage.removeItem(STORAGE_KEY);
+}
+
+function authHeader(): Record<string, string> {
+  const token = loadAuth()?.token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 export type CloneResult = {
   url: string;
@@ -44,26 +80,45 @@ export type Voice = {
   gender: string;
 };
 
-async function postJSON<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+/** Unwrap a response, and sign the user out if the backend rejected their token. */
+async function unwrap<T>(res: Response, sentToken: boolean): Promise<T> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    // 401 on an authenticated call means the session is gone (expired/invalid),
+    // so drop it and bounce to login rather than showing a confusing error.
+    if (res.status === 401 && sentToken) {
+      clearAuth();
+      if (typeof window !== "undefined") window.location.href = "/login";
+    }
     throw new Error(data?.error || data?.detail?.[0]?.msg || "Request failed");
   }
   return data as T;
 }
 
+async function getJSON<T>(path: string): Promise<T> {
+  const auth = authHeader();
+  const res = await fetch(`${API_URL}${path}`, { headers: auth });
+  return unwrap<T>(res, Boolean(auth.Authorization));
+}
+
+async function postJSON<T>(path: string, body: unknown): Promise<T> {
+  const auth = authHeader();
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...auth },
+    body: JSON.stringify(body),
+  });
+  return unwrap<T>(res, Boolean(auth.Authorization));
+}
+
 async function postForm<T>(path: string, form: FormData): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, { method: "POST", body: form });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data?.error || data?.detail?.[0]?.msg || "Request failed");
-  }
-  return data as T;
+  const auth = authHeader();
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    headers: auth,
+    body: form,
+  });
+  return unwrap<T>(res, Boolean(auth.Authorization));
 }
 
 export const api = {
@@ -73,62 +128,48 @@ export const api = {
   register: (name: string, email: string, password: string) =>
     postJSON<{ message: string }>("/register", { name, email, password }),
 
-  // Change the signed-in user's password (backend verifies the current one).
-  changePassword: (email: string, oldPassword: string, newPassword: string) =>
-    postJSON<{ message: string }>("/change-password", {
-      email,
+  // Change the signed-in user's password (backend verifies the current one and
+  // takes the account from the auth token, not from anything sent here). The
+  // backend invalidates old tokens on success, so adopt the fresh one it returns
+  // or this device would be signed out by its own password change.
+  changePassword: async (oldPassword: string, newPassword: string) => {
+    const res = await postJSON<{ message: string; token?: string }>("/change-password", {
       old_password: oldPassword,
       new_password: newPassword,
-    }),
+    });
+    const current = loadAuth();
+    if (res.token && current) saveAuth({ ...current, token: res.token });
+    return res;
+  },
 
-  
-  cloneVoice: ({
-    audio,
-    text,
-    email,
-  }: {
-    audio: File;
-    text: string;
-    email: string;
-  }) => {
+  cloneVoice: ({ audio, text }: { audio: File; text: string }) => {
     const form = new FormData();
     form.append("audio", audio);
     form.append("text", text);
-    form.append("user_email", email);
     return postForm<CloneResult>("/clone", form);
   },
 
   generateVoice: ({
     voice,
     text,
-    email,
     speed = DEFAULT_SPEED,
   }: {
     voice: string;
     text: string;
-    email: string;
     speed?: number;
-  }) =>
-    postJSON<CloneResult>("/generate", {
-      voice,
-      text,
-      speed,
-      user_email: email,
-    }),
+  }) => postJSON<CloneResult>("/generate", { voice, text, speed }),
 
   mixVoices: ({
     voiceA,
     voiceB,
     blend,
     text,
-    email,
     speed = DEFAULT_SPEED,
   }: {
     voiceA: string;
     voiceB: string;
     blend: number;
     text: string;
-    email: string;
     speed?: number;
   }) =>
     postJSON<CloneResult>("/mix", {
@@ -137,7 +178,6 @@ export const api = {
       blend,
       text,
       speed,
-      user_email: email,
     }),
 
   voices: async (): Promise<Voice[]> => {
@@ -147,28 +187,18 @@ export const api = {
     return (data?.voices as Voice[]) || [];
   },
 
-  history: async (email: string): Promise<HistoryItem[]> => {
-    const res = await fetch(
-      `${API_URL}/history?user_email=${encodeURIComponent(email)}`
-    );
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || "Failed to load history");
-    return (data?.history as HistoryItem[]) || [];
+  history: async (): Promise<HistoryItem[]> => {
+    const data = await getJSON<{ history?: HistoryItem[] }>("/history");
+    return data?.history || [];
   },
 
-  deleteFile: async (
-    name: string,
-    email: string
-  ): Promise<{ message: string }> => {
-    const res = await fetch(
-      `${API_URL}/files/${encodeURIComponent(
-        name
-      )}?user_email=${encodeURIComponent(email)}`,
-      { method: "DELETE" }
-    );
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || "Failed to delete");
-    return data as { message: string };
+  deleteFile: async (name: string): Promise<{ message: string }> => {
+    const auth = authHeader();
+    const res = await fetch(`${API_URL}/files/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+      headers: auth,
+    });
+    return unwrap<{ message: string }>(res, Boolean(auth.Authorization));
   },
 };
 

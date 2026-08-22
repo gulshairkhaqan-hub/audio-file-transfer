@@ -23,7 +23,7 @@ export default function DashboardPage() {
         return;
       }
       try {
-        const all = await api.history(user.email);
+        const all = await api.history();
         if (!cancelled) setItems(all);
       } catch {
         // history is non-critical — an empty dashboard is fine

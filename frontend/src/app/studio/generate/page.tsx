@@ -5,7 +5,6 @@
 // stores the result on Cloudinary, and returns a shareable URL.
 import { useEffect, useState } from "react";
 import { api, MAX_TEXT_CHARS, DEFAULT_SPEED } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
 import { useToast } from "@/components/Toast";
 import { useVoices } from "@/lib/useVoices";
 import VoiceSelect from "@/components/VoiceSelect";
@@ -15,7 +14,6 @@ import ResultPanel from "@/components/ResultPanel";
 import RecentList from "@/components/RecentList";
 
 export default function GeneratePage() {
-  const { user } = useAuth();
   const { success, error: toastError } = useToast();
   const { voices, loading: voicesLoading, error: voicesError } = useVoices();
   const [voice, setVoice] = useState("");
@@ -58,7 +56,6 @@ export default function GeneratePage() {
       const res = await api.generateVoice({
         voice,
         text: text.trim(),
-        email: user?.email || "",
         speed,
       });
       setResultUrl(res.url);

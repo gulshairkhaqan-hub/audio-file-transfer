@@ -1,34 +1,42 @@
 import os
+import io
+import hashlib
 import tempfile
 import time
 from pathlib import Path
 from dotenv import load_dotenv
 import re
 import bcrypt
+import jwt
 from pydantic import BaseModel, EmailStr
 load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=False)
-from fastapi import FastAPI, UploadFile, File, Form, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from typing import List
 from datetime import datetime, timezone, timedelta
 import cloudinary
 import cloudinary.uploader
-import cloudinary.api
 import requests
 from pymongo import MongoClient, ReturnDocument
 
 app = FastAPI(title="VoxClone API")
 
 
+# Every error in this app is shaped {"error": "..."} so the frontend can read one
+# field. HTTPException (raised by auth/validation dependencies) defaults to
+# {"detail": ...}, so reshape it here instead of at every raise site.
+@app.exception_handler(StarletteHTTPException)
+async def _http_error_handler(request: Request, exc: StarletteHTTPException):
+    return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
+
+
 _origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[o.strip() for o in _origins.split(",") if o.strip()],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# NOTE: CORS is registered further down, *after* the body-size middleware.
+# Starlette runs the last-registered middleware outermost, and a response that
+# skips CORSMiddleware reaches the browser as an opaque CORS failure instead of
+# a readable error — so CORS has to be the outermost layer.
 
 cloudinary.config(
     cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
@@ -55,6 +63,28 @@ except Exception:
 # a runaway client from burning Azure compute credits.
 RATE_LIMIT_MAX = 20
 RATE_LIMIT_WINDOW_SECONDS = 60
+
+# Auth. A missing JWT_SECRET is treated as misconfiguration rather than as
+# "no auth needed", so a deploy that forgets the secret fails closed.
+JWT_SECRET = os.getenv("JWT_SECRET", "")
+JWT_ALGORITHM = "HS256"
+JWT_TTL_DAYS = 7
+JWT_MIN_SECRET_LEN = 32  # RFC 7518 §3.2 minimum for HS256
+
+if JWT_SECRET and len(JWT_SECRET) < JWT_MIN_SECRET_LEN:
+    print(
+        f"[auth] WARNING: JWT_SECRET is only {len(JWT_SECRET)} characters — a short "
+        f"key can be brute-forced. Use at least {JWT_MIN_SECRET_LEN} "
+        "(e.g. `python -c \"import secrets; print(secrets.token_hex(32))\"`).",
+        flush=True,
+    )
+
+# Voice samples only need to be a few seconds long, and Vercel rejects request
+# bodies over ~4.5 MB before our code ever runs — so cap below that and return a
+# readable error instead of a platform-level failure.
+MAX_UPLOAD_BYTES = 4 * 1024 * 1024
+MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES + (256 * 1024)  # + room for the other form fields
+ALLOWED_AUDIO_EXTS = {".wav", ".mp3", ".m4a", ".mp4", ".aac", ".ogg", ".oga", ".opus", ".flac", ".webm"}
 
 UPLOAD_FOLDER = "audio_uploads"
 
@@ -121,11 +151,168 @@ def _clamp_speed(speed: float) -> float:
         return 1.0
 
 
-def _client_key(user_email: str, request: Request) -> str:
-    """Identify the caller for rate limiting: prefer their email, fall back to IP."""
-    email = (user_email or "").strip().lower()
-    if email:
-        return email
+def _password_fingerprint(password_hash: str) -> str:
+    """Short, non-reversible tag for a stored bcrypt hash.
+
+    Embedded in each token so changing a password invalidates tokens issued
+    against the old one. A digest rather than the hash itself — a JWT payload is
+    readable by whoever holds the token, so it must not carry hash material.
+    """
+    return hashlib.sha256(password_hash.encode("utf-8")).hexdigest()[:16]
+
+
+def _issue_token(email: str, name: str, password_hash: str) -> str:
+    """Sign a bearer token carrying the user's identity."""
+    if not JWT_SECRET:
+        raise HTTPException(status_code=503, detail="Authentication is not configured on the server.")
+    now = datetime.now(timezone.utc)
+    return jwt.encode(
+        {
+            "sub": email,
+            "name": name,
+            "pv": _password_fingerprint(password_hash),
+            "iat": now,
+            "exp": now + timedelta(days=JWT_TTL_DAYS),
+        },
+        JWT_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
+
+
+def current_user(authorization: str = Header(default="")) -> dict:
+    """FastAPI dependency: the caller's identity, taken from their signed token.
+
+    This is the *only* trusted source of identity. Never authorize against an
+    email supplied in a request body/query — the client controls those.
+    """
+    if not JWT_SECRET:
+        raise HTTPException(status_code=503, detail="Authentication is not configured on the server.")
+
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(status_code=401, detail="Please sign in to continue.")
+
+    try:
+        payload = jwt.decode(
+            token.strip(),
+            JWT_SECRET,
+            algorithms=[JWT_ALGORITHM],
+            # Reject a token that simply omits `exp` rather than trusting it forever.
+            options={"require": ["exp", "sub"]},
+        )
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="Your session has expired — please sign in again.")
+
+    email = (payload.get("sub") or "").lower().strip() if isinstance(payload.get("sub"), str) else ""
+    if not email:
+        raise HTTPException(status_code=401, detail="Your session is invalid — please sign in again.")
+
+    # Costs one indexed lookup per request, and buys the ability to end a session:
+    # changing the password re-fingerprints the account and every older token dies.
+    record = users_collection.find_one({"email": email}, {"password": 1, "name": 1})
+    if not record or payload.get("pv") != _password_fingerprint(record.get("password", "")):
+        raise HTTPException(status_code=401, detail="Your session has expired — please sign in again.")
+
+    return {"email": email, "name": record.get("name") or payload.get("name") or ""}
+
+
+def _looks_like_audio(head: bytes) -> bool:
+    """Sniff container magic bytes so a renamed .exe/.zip can't reach the model."""
+    if head[:4] in (b"RIFF", b"OggS", b"fLaC", b"\x1a\x45\xdf\xa3"):
+        return True  # wav, ogg/opus, flac, webm/matroska
+    if head[:3] == b"ID3":
+        return True  # mp3 with a tag
+    if head[4:8] == b"ftyp":
+        return True  # mp4/m4a/aac
+    # Bare MPEG audio frame sync (mp3 with no ID3 tag).
+    return len(head) >= 2 and head[0] == 0xFF and (head[1] & 0xE0) == 0xE0
+
+
+async def _read_audio(upload: UploadFile) -> bytes:
+    """Read an uploaded audio file, rejecting anything oversized or non-audio.
+
+    Runs before the model call, so a bad file never costs GPU/CPU time. Note that
+    Starlette's multipart parser has already spooled the body by the time this
+    runs (to disk past 1 MB) — _cap_body_size is what keeps a huge body from
+    getting that far; this re-counts the real bytes in case the header lied.
+    """
+    ext = os.path.splitext(upload.filename or "")[1].lower()
+    if ext not in ALLOWED_AUDIO_EXTS:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported file type — upload an MP3, WAV, M4A, OGG, FLAC or WebM audio file.",
+        )
+
+    # Browsers report m4a as video/mp4 and sometimes fall back to octet-stream,
+    # so treat the content type as a hint and rely on the magic bytes below.
+    content_type = (upload.content_type or "").lower()
+    if content_type and not content_type.startswith(("audio/", "video/", "application/octet-stream")):
+        raise HTTPException(status_code=400, detail="That doesn't look like an audio file.")
+
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await upload.read(1 << 20)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Audio file is too large — keep it under {MAX_UPLOAD_BYTES // (1024 * 1024)} MB "
+                       "(a clean ~20 second clip is ideal).",
+            )
+        chunks.append(chunk)
+
+    audio_bytes = b"".join(chunks)
+    if len(audio_bytes) < 1024:
+        raise HTTPException(status_code=400, detail="That audio file is empty or corrupted.")
+    if not _looks_like_audio(audio_bytes[:16]):
+        raise HTTPException(status_code=400, detail="That file isn't valid audio — please upload a real audio clip.")
+
+    # ponytail: size is the proxy for duration — decoding here would mean adding
+    # ffmpeg/soundfile to a serverless function. The frontend pre-checks duration,
+    # and the model service caps its own work.
+    return audio_bytes
+
+
+@app.middleware("http")
+async def _cap_body_size(request: Request, call_next):
+    """Reject oversized bodies from the Content-Length header, before FastAPI
+    buffers the upload. _read_audio still enforces the real limit for clients
+    that lie about (or omit) the header."""
+    length = request.headers.get("content-length", "")
+    if length.isdigit() and int(length) > MAX_REQUEST_BYTES:
+        return JSONResponse(
+            status_code=413,
+            content={"error": f"Upload is too large — keep audio under {MAX_UPLOAD_BYTES // (1024 * 1024)} MB."},
+        )
+    return await call_next(request)
+
+
+# Registered last so it wraps everything above it — every response, including the
+# early 413 and any 401 from the auth dependency, must carry CORS headers or the
+# browser hides the real status behind a CORS error.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in _origins.split(",") if o.strip()],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP for throttling endpoints that have no user yet.
+
+    Behind Vercel's proxy `request.client.host` is the proxy itself, so every
+    visitor would share one bucket and 20 logins/min would lock out the whole
+    app — hence the forwarded header first, with the socket peer only as a
+    local-dev fallback.
+    """
+    forwarded = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    if forwarded:
+        return forwarded
     return request.client.host if request.client else "anon"
 
 
@@ -174,7 +361,6 @@ class LoginRequest(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    email: EmailStr
     old_password: str
     new_password: str
 
@@ -183,7 +369,6 @@ class GenerateRequest(BaseModel):
     voice: str
     text: str
     speed: float = 1.0
-    user_email: str = ""
 
 
 class MixRequest(BaseModel):
@@ -192,7 +377,6 @@ class MixRequest(BaseModel):
     blend: float = 0.5
     text: str
     speed: float = 1.0
-    user_email: str = ""
 
 
 def _user_prefix(user_email: str) -> str:
@@ -336,10 +520,15 @@ def config_check():
         "mongodb_configured": bool(os.getenv("MONGODB_URI")),
         "cloudinary_configured": bool(os.getenv("CLOUDINARY_CLOUD_NAME")),
         "voice_service_configured": _model_configured(),
+        "auth_configured": bool(JWT_SECRET),
     }
 
 @app.post("/register")
-async def register(data: RegisterRequest):
+async def register(data: RegisterRequest, request: Request):
+    # Throttled per IP so nobody can mass-create accounts (each one costs a bcrypt hash).
+    if _rate_limited(f"register:{_client_ip(request)}"):
+        return _too_many()
+
     # Normalize email
     email = data.email.lower().strip()
 
@@ -361,7 +550,12 @@ async def register(data: RegisterRequest):
 
 
 @app.post("/login")
-async def login(data: LoginRequest):
+async def login(data: LoginRequest, request: Request):
+    # The password is now the only thing standing between a stranger and the
+    # account, so throttle guesses per IP. Each attempt also costs a full bcrypt
+    # verification, which is billed compute on a serverless function.
+    if _rate_limited(f"login:{_client_ip(request)}"):
+        return _too_many()
 
     email = data.email.lower().strip()
 
@@ -374,21 +568,26 @@ async def login(data: LoginRequest):
         "message": f"Welcome back, {user['name']}!",
         "name": user["name"],
         "email": email,
+        # The frontend sends this back as `Authorization: Bearer <token>`; it is
+        # what proves who the caller is on every protected route.
+        "token": _issue_token(email, user["name"], user["password"]),
     }
 
 
 @app.post("/change-password")
-async def change_password(data: ChangePasswordRequest):
-    """Change a user's password after verifying their current one."""
-    email = data.email.lower().strip()
+async def change_password(data: ChangePasswordRequest, user: dict = Depends(current_user)):
+    """Change the signed-in user's password after verifying their current one."""
+    email = user["email"]
 
     if len(data.new_password) < 6:
         return JSONResponse(status_code=400, content={"error": "New password must be at least 6 characters."})
 
-    user = users_collection.find_one({"email": email})
+    record = users_collection.find_one({"email": email})
 
-    if not user or not bcrypt.checkpw(data.old_password.encode("utf-8"), user["password"].encode("utf-8")):
-        return JSONResponse(status_code=401, content={"error": "Current password is incorrect."})
+    # 400, not 401: a wrong *current* password is a form error, whereas 401 now
+    # means "your session is gone" and signs the user out.
+    if not record or not bcrypt.checkpw(data.old_password.encode("utf-8"), record["password"].encode("utf-8")):
+        return JSONResponse(status_code=400, content={"error": "Current password is incorrect."})
 
     if data.new_password == data.old_password:
         return JSONResponse(status_code=400, content={"error": "New password must differ from the current one."})
@@ -396,21 +595,36 @@ async def change_password(data: ChangePasswordRequest):
     hashed = bcrypt.hashpw(data.new_password.encode("utf-8"), bcrypt.gensalt())
     users_collection.update_one({"email": email}, {"$set": {"password": hashed.decode("utf-8")}})
 
-    return {"message": "Password changed successfully!"}
+    # Every token issued against the old password is now dead (they carry a
+    # fingerprint of it), which is the point — "change my password" has to be able
+    # to kick out a session someone else is holding. Hand back a fresh token so
+    # the device doing the change stays signed in.
+    return {
+        "message": "Password changed successfully!",
+        "token": _issue_token(email, record["name"], hashed.decode("utf-8")),
+    }
 
 @app.post("/receive")
-async def receive_files(files: List[UploadFile] = File(...), user_email: str = Form("")):
+async def receive_files(
+    files: List[UploadFile] = File(...),
+    user: dict = Depends(current_user),
+):
     saved = []
+    user_email = user["email"]
+    # Loops Cloudinary uploads, so it gets the same budget as the model endpoints.
+    if _rate_limited(f"heavy:{user_email}"):
+        return _too_many()
     prefix = _user_prefix(user_email)
     for file in files:
+        audio_bytes = await _read_audio(file)
         base_name = os.path.splitext(os.path.basename(file.filename))[0]
 
-        
+
         public_id = f"{prefix}/{base_name}"
 
-    
+
         result = cloudinary.uploader.upload(
-            file.file,
+            io.BytesIO(audio_bytes),
             resource_type="video",
             folder=UPLOAD_FOLDER,
             public_id=public_id,
@@ -443,21 +657,22 @@ async def receive_files(files: List[UploadFile] = File(...), user_email: str = F
 
 @app.post("/clone")
 async def clone_voice(
-    request: Request,
     audio: UploadFile = File(...),
     text: str = Form(...),
-    user_email: str = Form(""),
+    user: dict = Depends(current_user),
 ):
     """Voice cloning: forward the sample + text to the model service (Pocket TTS),
     upload the generated audio to Cloudinary, record it, and return the URL."""
-    if _rate_limited(f"heavy:{_client_key(user_email, request)}"):
+    user_email = user["email"]
+    if _rate_limited(f"heavy:{user_email}"):
         return _too_many()
 
     err = _validate_text(text)
     if err:
         return err
 
-    audio_bytes = await audio.read()
+    # Validate the upload before spending model compute on it.
+    audio_bytes = await _read_audio(audio)
     filename = audio.filename or "sample.wav"
     content_type = audio.content_type or "audio/wav"
 
@@ -473,9 +688,10 @@ async def clone_voice(
 
 
 @app.post("/generate")
-async def generate_voice(data: GenerateRequest, request: Request):
+async def generate_voice(data: GenerateRequest, user: dict = Depends(current_user)):
     """Preset-voice generation: call the model service (Kokoro), upload the result."""
-    if _rate_limited(f"heavy:{_client_key(data.user_email, request)}"):
+    user_email = user["email"]
+    if _rate_limited(f"heavy:{user_email}"):
         return _too_many()
 
     err = _validate_text(data.text)
@@ -492,13 +708,14 @@ async def generate_voice(data: GenerateRequest, request: Request):
     if isinstance(result, JSONResponse):
         return result
 
-    return _store_audio(result, data.user_email, "generate")
+    return _store_audio(result, user_email, "generate")
 
 
 @app.post("/mix")
-async def mix_voices(data: MixRequest, request: Request):
+async def mix_voices(data: MixRequest, user: dict = Depends(current_user)):
     """Voice mixing: blend two Kokoro voice embeddings and speak `text` in the result."""
-    if _rate_limited(f"heavy:{_client_key(data.user_email, request)}"):
+    user_email = user["email"]
+    if _rate_limited(f"heavy:{user_email}"):
         return _too_many()
 
     err = _validate_text(data.text)
@@ -525,7 +742,7 @@ async def mix_voices(data: MixRequest, request: Request):
     if isinstance(result, JSONResponse):
         return result
 
-    return _store_audio(result, data.user_email, "mix")
+    return _store_audio(result, user_email, "mix")
 
 
 @app.get("/voices")
@@ -535,41 +752,39 @@ async def list_voices():
 
 
 @app.get("/files")
-async def list_files():
-    # Cloudinary listing is global — file ownership is tracked via MongoDB uploads_collection,
-    # not Cloudinary. Use /history with user_email param for per-user file records.
+async def list_files(user: dict = Depends(current_user)):
+    """List the signed-in user's own files.
+
+    Ownership lives in MongoDB, not Cloudinary — a Cloudinary listing is global
+    and would expose every user's audio, so this reads the uploads collection.
+    """
     try:
-        res = cloudinary.api.resources(
-            resource_type="video",
-            type="upload",
-            prefix=f"{UPLOAD_FOLDER}/",
-            max_results=100,
-        )
-        resources = sorted(
-            res.get("resources", []),
-            key=lambda r: r.get("created_at", ""),
-            reverse=True,
+        records = list(
+            uploads_collection.find({"user_email": user["email"]}, {"_id": 0, "name": 1, "url": 1, "uploaded_at": 1})
+            .sort("uploaded_at", -1)
+            .limit(100)
         )
         files = [
             {
-                "name": f"{r['public_id'].split('/')[-1]}.{r['format']}",
-                "url": r["secure_url"],
-                "uploaded_at": r.get("created_at", ""),
+                "name": r.get("name", ""),
+                "url": r.get("url", ""),
+                "uploaded_at": r["uploaded_at"].isoformat()
+                if isinstance(r.get("uploaded_at"), datetime)
+                else r.get("uploaded_at", ""),
             }
-            for r in resources
+            for r in records
         ]
         return {"count": len(files), "files": files}
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+    except Exception:
+        return JSONResponse(status_code=500, content={"error": "Could not list your files."})
 
 
 @app.get("/history")
-async def upload_history(user_email: str = ""):
-    """Return upload history from MongoDB, filtered by user_email."""
+async def upload_history(user: dict = Depends(current_user)):
+    """Return the signed-in user's upload history from MongoDB."""
     try:
-        query = {"user_email": user_email} if user_email else {}
         records = list(
-            uploads_collection.find(query, {"_id": 0})
+            uploads_collection.find({"user_email": user["email"]}, {"_id": 0})
             .sort("uploaded_at", -1)
             .limit(100)
         )
@@ -578,14 +793,15 @@ async def upload_history(user_email: str = ""):
             if isinstance(r.get("uploaded_at"), datetime):
                 r["uploaded_at"] = r["uploaded_at"].isoformat()
         return {"count": len(records), "history": records}
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+    except Exception:
+        return JSONResponse(status_code=500, content={"error": "Could not load your history."})
 
 
 @app.delete("/files/{name}")
-async def delete_file(name: str, user_email: str = ""):
+async def delete_file(name: str, user: dict = Depends(current_user)):
     """Delete a file from Cloudinary and MongoDB. Scoped to the owning user."""
-    # Ownership check: the record must belong to this user.
+    user_email = user["email"]
+    # Ownership check: the record must belong to the signed-in user.
     record = uploads_collection.find_one({"name": name, "user_email": user_email})
     if not record:
         return JSONResponse(status_code=404, content={"error": "File not found."})
@@ -601,8 +817,8 @@ async def delete_file(name: str, user_email: str = ""):
         cloudinary.uploader.destroy(public_id, resource_type="video", invalidate=True)
         uploads_collection.delete_one({"name": name, "user_email": user_email})
         return {"message": f"'{name}' deleted."}
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+    except Exception:
+        return JSONResponse(status_code=500, content={"error": "Could not delete that file."})
 
 
 if __name__ == "__main__":

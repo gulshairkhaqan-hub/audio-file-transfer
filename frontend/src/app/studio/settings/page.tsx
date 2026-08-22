@@ -43,7 +43,7 @@ export default function SettingsPage() {
 
     setSaving(true);
     try {
-      await api.changePassword(user.email, current, next);
+      await api.changePassword(current, next);
       success("Password changed successfully!");
       setCurrent("");
       setNext("");

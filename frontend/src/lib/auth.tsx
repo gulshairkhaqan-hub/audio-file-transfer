@@ -7,42 +7,39 @@ import {
   useState,
   ReactNode,
 } from "react";
+import { clearAuth, loadAuth, saveAuth, type StoredAuth } from "@/lib/api";
 
 export type User = { name: string; email: string };
 
 type AuthContextType = {
   user: User | null;
   loading: boolean;
-  login: (user: User) => void;
+  login: (auth: StoredAuth) => void;
   logout: () => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const STORAGE_KEY = "voxclone_user";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setUser(JSON.parse(raw));
-    } catch {
-      
-    }
+    // loadAuth() returns null unless a valid token is stored, so a pre-token
+    // session (or a cleared one) starts out signed out.
+    const stored = loadAuth();
+    if (stored) setUser({ name: stored.name, email: stored.email });
     setLoading(false);
   }, []);
 
-  const login = (u: User) => {
-    setUser(u);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
+  const login = (auth: StoredAuth) => {
+    saveAuth(auth);
+    setUser({ name: auth.name, email: auth.email });
   };
 
   const logout = () => {
     setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
+    clearAuth();
   };
 
   return (

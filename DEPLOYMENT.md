@@ -118,6 +118,7 @@ az containerapp update --name $APP --resource-group $RG --image $IMAGE
 | `CLOUDINARY_API_SECRET` | Cloudinary API secret |
 | `MODEL_SERVICE_URL` | Azure model service URL (Part 1.2 wala) |
 | `MODEL_API_KEY` | **Wohi** key jo Azure me daali thi (Part 1.2) |
+| `JWT_SECRET` | Login tokens sign karne ki key — apni banao: `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `ALLOWED_ORIGINS` | Frontend URL (Part 3 ke baad set/update karna) |
 
 4. Deploy karo. Backend URL milega, jaisa `https://<project>.vercel.app`.
@@ -153,8 +154,13 @@ CLOUDINARY_API_KEY=...
 CLOUDINARY_API_SECRET=...
 MODEL_SERVICE_URL=https://voxclone-models.<...>.azurecontainerapps.io
 MODEL_API_KEY=<same-as-azure>
+JWT_SECRET=<64-char random hex, apni banao>
 ALLOWED_ORIGINS=https://<frontend>.vercel.app
 ```
+
+> `JWT_SECRET` set na ho to backend jaan-boojh ke **saare logins block** kar dega
+> (503) — aadhi-adhoori security se better hai ke saaf fail ho. Isko badalne se
+> sab users logout ho jayenge (naye tokens purane se match nahi karenge).
 
 **Frontend (Vercel):**
 ```

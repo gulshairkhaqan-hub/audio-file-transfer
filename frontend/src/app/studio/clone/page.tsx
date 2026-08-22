@@ -5,13 +5,31 @@
 // stores the result on Cloudinary, and returns a shareable URL.
 import { useState } from "react";
 import { api, MAX_TEXT_CHARS } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
 import { useToast } from "@/components/Toast";
 import ResultPanel from "@/components/ResultPanel";
 import RecentList from "@/components/RecentList";
 
+// Kept in step with the backend's own limits (server.py is the real gate — these
+// only spare the user a round-trip and spare us the model compute).
+const MAX_SAMPLE_BYTES = 4 * 1024 * 1024;
+const MAX_SAMPLE_SECONDS = 120;
+
+/** Read a sample's duration in the browser. Resolves 0 if it can't be decoded. */
+function sampleDuration(file: File): Promise<number> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const el = new Audio();
+    const done = (seconds: number) => {
+      URL.revokeObjectURL(url);
+      resolve(seconds);
+    };
+    el.onloadedmetadata = () => done(Number.isFinite(el.duration) ? el.duration : 0);
+    el.onerror = () => done(0);
+    el.src = url;
+  });
+}
+
 export default function ClonePage() {
-  const { user } = useAuth();
   const { success, error: toastError } = useToast();
   const [audio, setAudio] = useState<File | null>(null);
   const [text, setText] = useState("");
@@ -32,14 +50,24 @@ export default function ClonePage() {
       toastError("Please type some text to speak.");
       return;
     }
+    if (audio.size > MAX_SAMPLE_BYTES) {
+      toastError(
+        `That sample is too large — keep it under ${MAX_SAMPLE_BYTES / (1024 * 1024)} MB.`
+      );
+      return;
+    }
 
     setLoading(true);
     try {
-      const res = await api.cloneVoice({
-        audio,
-        text: text.trim(),
-        email: user?.email || "",
-      });
+      const seconds = await sampleDuration(audio);
+      if (seconds > MAX_SAMPLE_SECONDS) {
+        toastError(
+          `That sample is ${Math.round(seconds)}s long — trim it to under ${MAX_SAMPLE_SECONDS}s.`
+        );
+        return;
+      }
+
+      const res = await api.cloneVoice({ audio, text: text.trim() });
       setResultUrl(res.url);
       success("Voice cloned successfully!");
       setReloadKey((k) => k + 1);

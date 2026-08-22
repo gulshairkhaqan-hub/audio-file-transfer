@@ -29,7 +29,7 @@ export default function LibraryPage() {
       return;
     }
     try {
-      const all = await api.history(user.email);
+      const all = await api.history();
       setItems(all);
     } catch {
       toastError("Couldn't load your library — try refreshing.");
@@ -71,7 +71,7 @@ export default function LibraryPage() {
     if (!window.confirm(`Delete "${item.name}"? This can't be undone.`)) return;
     setDeleting(item.url);
     try {
-      await api.deleteFile(item.name, user.email);
+      await api.deleteFile(item.name);
       setItems((prev) => prev.filter((x) => x.url !== item.url));
       success("Deleted.");
     } catch (err) {
