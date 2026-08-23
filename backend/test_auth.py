@@ -396,6 +396,143 @@ check("I: login fails closed too", login(B_EMAIL, B_PASS).status_code == 503)
 server.JWT_SECRET = _secret
 
 
+# ── K. The limiter must fail CLOSED on routes that spend money ────────────────
+# Reuses the real limiter + frozen clock installed in section J, so windows can't
+# roll over mid-section.
+from pymongo.errors import AutoReconnect, DuplicateKeyError, ServerSelectionTimeoutError
+
+model_calls: list[str] = []
+server._request_audio = lambda path, **_kw: (model_calls.append(path) or "/tmp/fake-generated.wav")
+
+
+class BrokenCollection(FakeCollection):
+    """A rate-limit store that cannot answer — Mongo unreachable, timing out, etc."""
+
+    def __init__(self, exc):
+        super().__init__()
+        self.exc = exc
+
+    def find_one_and_update(self, *_args, **_kwargs):
+        raise self.exc
+
+
+class RecordingCollection(FakeCollection):
+    """Captures the update documents so the counter's shape is inspectable."""
+
+    def __init__(self):
+        super().__init__()
+        self.updates: list[dict] = []
+
+    def find_one_and_update(self, query, update, **kwargs):
+        self.updates.append({"query": query, "update": update, "kwargs": kwargs})
+        return super().find_one_and_update(query, update, **kwargs)
+
+
+class RacingCollection(FakeCollection):
+    """First upsert loses the race to create a brand-new bucket, as two cold
+    serverless invocations in the same window would."""
+
+    def __init__(self):
+        super().__init__()
+        self.calls = 0
+
+    def find_one_and_update(self, *args, **kwargs):
+        self.calls += 1
+        if self.calls == 1:
+            raise DuplicateKeyError("E11000 duplicate key error")
+        return super().find_one_and_update(*args, **kwargs)
+
+
+GEN_BODY = {"voice": "af_heart", "text": "hello"}
+HEAVY_ROUTES = [
+    ("/generate", {"json": GEN_BODY}),
+    ("/mix", {"json": {"voice_a": "af_heart", "voice_b": "am_adam", "blend": 0.5, "text": "hello"}}),
+    ("/clone", {"files": {"audio": ("s.wav", wav_bytes(), "audio/wav")}, "data": {"text": "hello"}}),
+]
+
+for path, kwargs in HEAVY_ROUTES:
+    # Under the limit: the request works and the model is actually reached.
+    server.rate_limits_collection = FakeCollection()
+    model_calls.clear()
+    r = client.post(path, headers=bearer(a_token), **kwargs)
+    check(f"K: {path} under the limit succeeds", r.status_code == 200, r.text)
+    check(f"K: {path} reaches the model when allowed", len(model_calls) == 1, str(model_calls))
+
+    # Spend the rest of the budget; the request past it must be refused.
+    codes = [client.post(path, headers=bearer(a_token), **kwargs).status_code for _ in range(server.RATE_LIMIT_MAX)]
+    check(f"K: {path} over the limit returns 429", codes[-1] == 429, str(codes[-3:]))
+    calls_at_limit = len(model_calls)
+    check(f"K: {path} allowed exactly the budget", calls_at_limit == server.RATE_LIMIT_MAX, str(calls_at_limit))
+    check(f"K: {path} stays throttled", client.post(path, headers=bearer(a_token), **kwargs).status_code == 429)
+    check(f"K: {path} spends no compute once throttled", len(model_calls) == calls_at_limit, str(len(model_calls)))
+
+    # Limiter broken: 503, and — the whole point — no model call.
+    for exc in (ServerSelectionTimeoutError("mongo unreachable"), AutoReconnect("connection dropped"), RuntimeError("boom")):
+        label = type(exc).__name__
+        server.rate_limits_collection = BrokenCollection(exc)
+        model_calls.clear()
+        r = client.post(path, headers=bearer(a_token), **kwargs)
+        check(f"K: {path} returns 503 when the limiter fails ({label})", r.status_code == 503, f"got {r.status_code} {r.text[:120]}")
+        check(f"K: {path} calls no model when the limiter fails ({label})", model_calls == [], str(model_calls))
+        body = r.json().get("error", "")
+        check(
+            f"K: {path} 503 leaks no internals ({label})",
+            isinstance(body, str) and not any(w in body.lower() for w in ("mongo", "traceback", "e11000", label.lower())),
+            body,
+        )
+
+# 503 and 429 must be distinguishable — one means "slow down", the other "we
+# can't tell", and the frontend/ops should be able to react differently.
+server.rate_limits_collection = BrokenCollection(ServerSelectionTimeoutError("down"))
+unavailable = client.post("/generate", headers=bearer(a_token), json=GEN_BODY)
+_frozen_bucket = int(1_700_000_000.0) // server.RATE_LIMIT_WINDOW_SECONDS
+server.rate_limits_collection = FakeCollection([{"_id": f"heavy:{A_EMAIL}:{_frozen_bucket}", "count": 999}])
+over = client.post("/generate", headers=bearer(a_token), json=GEN_BODY)
+check(
+    "K: 'limit exceeded' (429) is distinct from 'limiter unavailable' (503)",
+    over.status_code == 429 and unavailable.status_code == 503,
+    f"over={over.status_code} unavailable={unavailable.status_code}",
+)
+
+# Upload/storage routes spend money too (Cloudinary), so they fail closed as well.
+server.rate_limits_collection = BrokenCollection(ServerSelectionTimeoutError("down"))
+r = client.post("/receive", headers=bearer(a_token), files={"files": ("s.wav", wav_bytes(), "audio/wav")})
+check("K: /receive fails closed when the limiter fails", r.status_code == 503, f"got {r.status_code} {r.text[:120]}")
+
+# One user burning their budget must not throttle anybody else.
+server.rate_limits_collection = FakeCollection()
+a_codes = [client.post("/generate", headers=bearer(a_token), json=GEN_BODY).status_code for _ in range(server.RATE_LIMIT_MAX + 1)]
+check("K: A is throttled after A's own budget", a_codes[-1] == 429, str(a_codes[-2:]))
+b_code = client.post("/generate", headers=bearer(b_token), json=GEN_BODY).status_code
+check("K: B keeps a separate bucket from A", b_code == 200, f"got {b_code}")
+
+# Auth routes fail OPEN: a limiter outage must not lock everyone out of signing
+# in, and there is no third-party spend behind them.
+server.rate_limits_collection = BrokenCollection(ServerSelectionTimeoutError("down"))
+r = login(B_EMAIL, B_PASS)
+check("K: login still works when the limiter is broken", r.status_code == 200, f"got {r.status_code} {r.text[:120]}")
+r = client.post("/register", json={"name": "Dan", "email": "dan@example.com", "password": "dan-password"})
+check("K: register still works when the limiter is broken", r.status_code == 200, f"got {r.status_code} {r.text[:120]}")
+
+# Atomicity. Real concurrency isn't deterministic in a single-process test suite,
+# so assert the *mechanism* instead: one server-side $inc upsert per check, which
+# Mongo applies atomically per document. A read-then-write would show up here as
+# either a find() first or more than one call.
+rec = RecordingCollection()
+server.rate_limits_collection = rec
+client.post("/generate", headers=bearer(a_token), json=GEN_BODY)
+upd = rec.updates[-1]
+check("K: the counter is a server-side $inc", upd["update"].get("$inc") == {"count": 1}, str(upd["update"]))
+check("K: the bucket is created in the same operation", upd["kwargs"].get("upsert") is True, str(upd["kwargs"]))
+check("K: one round trip per check (no read-then-write)", len(rec.updates) == 1, str(len(rec.updates)))
+check("K: buckets carry a TTL so they expire", "expireAt" in upd["update"].get("$setOnInsert", {}), str(upd["update"]))
+
+# A lost upsert race on a brand-new bucket is normal, not an outage — retry, don't 503.
+server.rate_limits_collection = RacingCollection()
+r = client.post("/generate", headers=bearer(a_token), json=GEN_BODY)
+check("K: an upsert race retries instead of failing closed", r.status_code == 200, f"got {r.status_code} {r.text[:120]}")
+
+
 print(f"\n{len(checks)} security checks passed:")
 for c in checks:
     print(f"  ok  {c}")

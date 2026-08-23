@@ -20,6 +20,7 @@ import cloudinary
 import cloudinary.uploader
 import requests
 from pymongo import MongoClient, ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 app = FastAPI(title="VoxClone API")
 
@@ -316,31 +317,73 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "anon"
 
 
+class RateLimitUnavailable(Exception):
+    """The limiter could not determine whether a request is allowed.
+
+    Distinct from "over the limit": nobody knows what the count is. Callers
+    decide what that means for their route — see _limit_or_503 / _limit_or_allow.
+    """
+
+
+def _bump(bucket_id: str) -> dict | None:
+    """Atomically add 1 to a window bucket and return it.
+
+    `$inc` inside find_one_and_update is a single-document atomic operation
+    performed by the server, so N concurrent invocations produce N increments —
+    no read-modify-write race, which matters because each Vercel invocation is a
+    separate process that cannot hold a lock.
+    """
+    return rate_limits_collection.find_one_and_update(
+        {"_id": bucket_id},
+        {
+            "$inc": {"count": 1},
+            "$setOnInsert": {
+                "expireAt": datetime.now(timezone.utc)
+                + timedelta(seconds=RATE_LIMIT_WINDOW_SECONDS * 2)
+            },
+        },
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+
+
 def _rate_limited(key: str) -> bool:
     """Fixed-window limiter backed by Mongo. Returns True once `key` has spent
     its budget for the current window.
 
-    ponytail: fixed window (a burst can straddle two windows) + Mongo round-trip
-    per call. Fine at this scale; swap for Redis/sliding-window if traffic grows.
+    Raises RateLimitUnavailable if the store can't answer. It deliberately does
+    *not* return False in that case: "the limiter is broken" must never be
+    silently read as "this request is fine", or an outage becomes free rein over
+    paid model compute.
+
+    ponytail: fixed window (a burst can straddle two windows, so ~2x the limit
+    across a boundary) + one Mongo round-trip per call. Fine at this scale; swap
+    for a sliding window if the boundary burst starts costing real money.
     """
-    bucket = int(time.time()) // RATE_LIMIT_WINDOW_SECONDS
-    try:
-        doc = rate_limits_collection.find_one_and_update(
-            {"_id": f"{key}:{bucket}"},
-            {
-                "$inc": {"count": 1},
-                "$setOnInsert": {
-                    "expireAt": datetime.now(timezone.utc)
-                    + timedelta(seconds=RATE_LIMIT_WINDOW_SECONDS * 2)
-                },
-            },
-            upsert=True,
-            return_document=ReturnDocument.AFTER,
-        )
-    except Exception:
-        # Never let a limiter hiccup block a real request — fail open.
-        return False
-    return doc.get("count", 1) > RATE_LIMIT_MAX
+    bucket_id = f"{key}:{int(time.time()) // RATE_LIMIT_WINDOW_SECONDS}"
+
+    # Two cold requests can race to upsert the same brand-new bucket; the loser
+    # gets a duplicate-key error even though nothing is actually wrong. The retry
+    # hits the now-existing document and is a plain $inc.
+    for attempt in (1, 2):
+        try:
+            doc = _bump(bucket_id)
+            break
+        except DuplicateKeyError:
+            if attempt == 2:
+                print(f"[ratelimit] repeated upsert collision on {bucket_id}", flush=True)
+                raise RateLimitUnavailable("upsert collision")
+        except Exception as exc:
+            # Type + bucket only: enough to tell "Mongo is down" from "index is
+            # wrong" in the logs, without writing a user's email into them.
+            print(
+                f"[ratelimit] store unavailable: {type(exc).__name__} on bucket "
+                f"ending {bucket_id.rsplit(':', 1)[-1]}",
+                flush=True,
+            )
+            raise RateLimitUnavailable(type(exc).__name__) from exc
+
+    return (doc or {}).get("count", 1) > RATE_LIMIT_MAX
 
 
 def _too_many():
@@ -348,6 +391,42 @@ def _too_many():
         status_code=429,
         content={"error": "Too many requests — please wait a minute before generating again."},
     )
+
+
+def _limiter_unavailable():
+    """503, not 429: the request wasn't refused for being excessive, we just
+    can't verify it. Generic text — the Mongo error type stays in the logs."""
+    return JSONResponse(
+        status_code=503,
+        content={"error": "Service is temporarily unavailable — please try again in a moment."},
+    )
+
+
+def _limit_or_503(key: str):
+    """Guard for routes that spend money (model compute, Cloudinary uploads).
+
+    Returns a JSONResponse the caller must return, or None to proceed. Fails
+    CLOSED: a broken limiter yields 503 and the expensive call never happens.
+    """
+    try:
+        return _too_many() if _rate_limited(key) else None
+    except RateLimitUnavailable:
+        return _limiter_unavailable()
+
+
+def _limit_or_allow(key: str):
+    """Guard for /login and /register. Fails OPEN.
+
+    Failing closed here would turn a limiter hiccup into "nobody can sign in",
+    and unlike the model routes there's no third-party spend behind these — the
+    worst case is extra bcrypt work, and bcrypt's cost factor is itself the
+    brute-force defence. (In practice the limiter and the users collection share
+    one Mongo client, so a real outage fails these routes anyway.)
+    """
+    try:
+        return _too_many() if _rate_limited(key) else None
+    except RateLimitUnavailable:
+        return None
 
 
 class RegisterRequest(BaseModel):
@@ -526,8 +605,9 @@ def config_check():
 @app.post("/register")
 async def register(data: RegisterRequest, request: Request):
     # Throttled per IP so nobody can mass-create accounts (each one costs a bcrypt hash).
-    if _rate_limited(f"register:{_client_ip(request)}"):
-        return _too_many()
+    throttled = _limit_or_allow(f"register:{_client_ip(request)}")
+    if throttled:
+        return throttled
 
     # Normalize email
     email = data.email.lower().strip()
@@ -554,8 +634,9 @@ async def login(data: LoginRequest, request: Request):
     # The password is now the only thing standing between a stranger and the
     # account, so throttle guesses per IP. Each attempt also costs a full bcrypt
     # verification, which is billed compute on a serverless function.
-    if _rate_limited(f"login:{_client_ip(request)}"):
-        return _too_many()
+    throttled = _limit_or_allow(f"login:{_client_ip(request)}")
+    if throttled:
+        return throttled
 
     email = data.email.lower().strip()
 
@@ -612,8 +693,9 @@ async def receive_files(
     saved = []
     user_email = user["email"]
     # Loops Cloudinary uploads, so it gets the same budget as the model endpoints.
-    if _rate_limited(f"heavy:{user_email}"):
-        return _too_many()
+    throttled = _limit_or_503(f"heavy:{user_email}")
+    if throttled:
+        return throttled
     prefix = _user_prefix(user_email)
     for file in files:
         audio_bytes = await _read_audio(file)
@@ -664,8 +746,9 @@ async def clone_voice(
     """Voice cloning: forward the sample + text to the model service (Pocket TTS),
     upload the generated audio to Cloudinary, record it, and return the URL."""
     user_email = user["email"]
-    if _rate_limited(f"heavy:{user_email}"):
-        return _too_many()
+    throttled = _limit_or_503(f"heavy:{user_email}")
+    if throttled:
+        return throttled
 
     err = _validate_text(text)
     if err:
@@ -691,8 +774,9 @@ async def clone_voice(
 async def generate_voice(data: GenerateRequest, user: dict = Depends(current_user)):
     """Preset-voice generation: call the model service (Kokoro), upload the result."""
     user_email = user["email"]
-    if _rate_limited(f"heavy:{user_email}"):
-        return _too_many()
+    throttled = _limit_or_503(f"heavy:{user_email}")
+    if throttled:
+        return throttled
 
     err = _validate_text(data.text)
     if err:
@@ -715,8 +799,9 @@ async def generate_voice(data: GenerateRequest, user: dict = Depends(current_use
 async def mix_voices(data: MixRequest, user: dict = Depends(current_user)):
     """Voice mixing: blend two Kokoro voice embeddings and speak `text` in the result."""
     user_email = user["email"]
-    if _rate_limited(f"heavy:{user_email}"):
-        return _too_many()
+    throttled = _limit_or_503(f"heavy:{user_email}")
+    if throttled:
+        return throttled
 
     err = _validate_text(data.text)
     if err:
