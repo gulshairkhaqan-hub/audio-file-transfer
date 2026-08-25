@@ -8,6 +8,7 @@ import { api, MAX_TEXT_CHARS } from "@/lib/api";
 import { useToast } from "@/components/Toast";
 import ResultPanel from "@/components/ResultPanel";
 import RecentList from "@/components/RecentList";
+import { Mic, Upload, Headphones } from "@/components/icons";
 
 // Kept in step with the backend's own limits (server.py is the real gate — these
 // only spare the user a round-trip and spare us the model compute).
@@ -88,18 +89,23 @@ export default function ClonePage() {
 
   return (
     <div className="mx-auto max-w-3xl fade-up">
-      <h1 className="text-2xl font-semibold tracking-tight">🎙️ Voice Cloning</h1>
-      <p className="mt-1 text-sm text-muted">
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-2 text-accent">
+          <Mic size={20} />
+        </span>
+        <h1 className="text-2xl font-bold tracking-tight">Voice Cloning</h1>
+      </div>
+      <p className="mt-2 text-sm text-muted">
         Upload a voice sample and type text — the AI speaks your text in that
         voice&apos;s tone. A clean ~20s clip works best.
       </p>
 
       <form
         onSubmit={handleSubmit}
-        className="card-hover mt-6 space-y-5 rounded-2xl border border-white/10 bg-surface/80 p-6 shadow-2xl backdrop-blur-md"
+        className="mt-6 space-y-5 rounded-2xl border border-border bg-surface p-6 shadow-sm"
       >
         <div className="space-y-1.5">
-          <label className="ml-1 text-xs uppercase tracking-widest text-muted">
+          <label className="ml-1 text-xs font-medium uppercase tracking-widest text-muted">
             Voice sample
           </label>
           {/* Drag-and-drop dropzone */}
@@ -110,10 +116,10 @@ export default function ClonePage() {
             }}
             onDragLeave={() => setDragOver(false)}
             onDrop={onDrop}
-            className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-all ${
+            className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-9 text-center transition-colors ${
               dragOver
                 ? "border-accent bg-accent/5"
-                : "border-border bg-surface-2 hover:border-accent/40"
+                : "border-border bg-surface-2 hover:border-accent/50"
             }`}
           >
             <input
@@ -122,8 +128,10 @@ export default function ClonePage() {
               onChange={(e) => setAudio(e.target.files?.[0] ?? null)}
               className="hidden"
             />
-            <span className="text-2xl">{audio ? "🎧" : "⬆️"}</span>
-            <span className="text-sm text-foreground">
+            <span className="text-muted">
+              {audio ? <Headphones size={26} /> : <Upload size={26} />}
+            </span>
+            <span className="text-sm font-medium text-foreground">
               {audio ? audio.name : "Drop an audio file or click to browse"}
             </span>
             <span className="text-xs text-muted">MP3, WAV, M4A · ~20s ideal</span>
@@ -132,7 +140,7 @@ export default function ClonePage() {
 
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <label className="ml-1 text-xs uppercase tracking-widest text-muted">
+            <label className="ml-1 text-xs font-medium uppercase tracking-widest text-muted">
               Text to speak
             </label>
             <span
@@ -149,14 +157,14 @@ export default function ClonePage() {
             rows={4}
             maxLength={MAX_TEXT_CHARS}
             placeholder="Type what the cloned voice should say…"
-            className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-3 text-sm text-foreground outline-none placeholder:text-muted/50"
+            className="field w-full resize-y rounded-xl border border-transparent bg-surface-2 px-4 py-3 text-sm text-foreground outline-none placeholder:text-muted/60"
           />
         </div>
 
         <button
           type="submit"
           disabled={loading}
-          className="lift sheen gradient-accent flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white shadow-[0_0_20px_var(--accent-glow)] hover:shadow-[0_0_32px_var(--accent-glow)] active:scale-[0.98] disabled:opacity-60"
+          className="lift gradient-accent flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white active:scale-[0.99] disabled:opacity-60"
         >
           {loading ? (
             <>

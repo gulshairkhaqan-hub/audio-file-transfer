@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import Logo from "@/components/Logo";
 import PasswordField from "@/components/PasswordField";
 
-// Single-screen centered register: logo + form, no scroll.
+// Clean, centered single-screen register on a white canvas.
 export default function RegisterPage() {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -42,42 +42,31 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-background">
-      {/* Full-screen blue glow background */}
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-1/4 top-1/4 h-[50vh] w-[50vw] rounded-full bg-accent-2/30 blur-[120px]" />
-        <div className="absolute bottom-1/4 right-1/4 h-[40vh] w-[40vw] rounded-full bg-accent/25 blur-[100px]" />
-      </div>
-
-      {/* Centered single-screen card */}
-      <div className="relative z-10 mx-auto w-full max-w-sm space-y-4 px-5 fade-up">
-        {/* Logo + tagline */}
-        <div className="flex flex-col items-center gap-1.5 text-center">
-          <div className="pointer-events-none absolute left-1/2 top-0 -z-10 h-32 w-32 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent/40 blur-[70px]" />
-          <Logo className="h-14 w-auto" />
-          <p className="text-[10px] uppercase tracking-[0.2em] text-accent">
-            The Future of Sound
-          </p>
+    <main className="flex min-h-screen w-full items-center justify-center bg-background px-5 py-10">
+      <div className="w-full max-w-sm fade-up">
+        {/* Logo */}
+        <div className="mb-8 flex justify-center">
+          <Logo className="h-9 w-auto" />
         </div>
 
         {/* Form card */}
-        <div className="card-hover rounded-2xl border border-white/10 bg-surface/80 p-5 shadow-2xl backdrop-blur-md">
-          <div className="mb-5">
-            <h2 className="text-xl font-semibold text-foreground">
-              Start Creating
-            </h2>
-            <p className="mt-1 text-xs text-muted">
-              Join the next generation of AI voice studios.
+        <div className="rounded-2xl border border-border bg-surface p-7 shadow-sm">
+          <div className="mb-6">
+            <h1 className="text-xl font-bold tracking-tight text-foreground">
+              Create your account
+            </h1>
+            <p className="mt-1 text-sm text-muted">
+              Start creating studio-quality voices.
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-3.5">
-            <div className="space-y-1">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
               <label
                 htmlFor="name"
-                className="ml-1 text-[10px] uppercase tracking-widest text-muted"
+                className="ml-1 text-[11px] font-medium uppercase tracking-widest text-muted"
               >
-                Full Name
+                Full name
               </label>
               <input
                 id="name"
@@ -85,16 +74,16 @@ export default function RegisterPage() {
                 placeholder="Alex Rivera"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-2.5 text-sm text-foreground outline-none placeholder:text-muted/50"
+                className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-2.5 text-sm text-foreground outline-none placeholder:text-muted/60"
               />
             </div>
 
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1.5">
               <label
                 htmlFor="email"
-                className="ml-1 text-[10px] uppercase tracking-widest text-muted"
+                className="ml-1 text-[11px] font-medium uppercase tracking-widest text-muted"
               >
-                Email Address
+                Email address
               </label>
               <input
                 id="email"
@@ -102,7 +91,7 @@ export default function RegisterPage() {
                 placeholder="alex@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-2.5 text-sm text-foreground outline-none placeholder:text-muted/50"
+                className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-2.5 text-sm text-foreground outline-none placeholder:text-muted/60"
               />
             </div>
 
@@ -112,38 +101,31 @@ export default function RegisterPage() {
               autoComplete="new-password"
             />
 
-            {error && <p className="text-xs text-red-400">{error}</p>}
-            {success && <p className="text-xs text-green-400">{success}</p>}
+            {error && <p className="text-xs font-medium text-red-600">{error}</p>}
+            {success && (
+              <p className="text-xs font-medium text-green-700">{success}</p>
+            )}
 
             <button
               type="submit"
               disabled={loading}
-              className="lift sheen gradient-accent mt-3 w-full rounded-xl py-3 text-sm font-semibold text-white shadow-[0_0_20px_var(--accent-glow)] hover:shadow-[0_0_32px_var(--accent-glow)] active:scale-[0.98] disabled:opacity-60"
+              className="lift gradient-accent mt-2 flex items-center justify-center rounded-xl py-3 text-sm font-semibold text-white active:scale-[0.99] disabled:opacity-60"
             >
-              {loading ? "Creating…" : "Create Account"}
+              {loading ? "Creating…" : "Create account"}
             </button>
           </form>
-
-          <div className="mt-5 text-center">
-            <p className="text-xs text-muted">
-              Already have an account?{" "}
-              <Link
-                href="/login"
-                className="font-semibold text-accent-2 underline-offset-4 hover:underline"
-              >
-                Log in
-              </Link>
-            </p>
-          </div>
-
-          <div className="mt-6 text-center">
-            <p className="text-[9px] uppercase leading-relaxed tracking-widest text-muted opacity-60">
-              By signing up, you agree to our
-              <br />
-              Terms of Service &amp; Privacy Policy
-            </p>
-          </div>
         </div>
+
+        <p className="mt-6 text-center text-sm text-muted">
+          Already have an account?{" "}
+          <Link href="/login" className="font-medium text-accent-2 hover:underline">
+            Log in
+          </Link>
+        </p>
+
+        <p className="mt-4 text-center text-[11px] leading-relaxed text-muted/70">
+          By signing up, you agree to our Terms of Service &amp; Privacy Policy.
+        </p>
       </div>
     </main>
   );

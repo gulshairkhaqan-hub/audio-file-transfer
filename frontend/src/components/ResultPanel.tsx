@@ -5,6 +5,7 @@
 import { useToast } from "@/components/Toast";
 import AudioPlayer from "@/components/AudioPlayer";
 import { downloadAudio, toAudioFilename } from "@/lib/download";
+import { Download } from "@/components/icons";
 
 export default function ResultPanel({
   url,
@@ -30,19 +31,19 @@ export default function ResultPanel({
   }
 
   return (
-    <div className="card-hover mt-6 space-y-3 rounded-2xl border border-white/10 bg-surface/80 p-6 shadow-2xl backdrop-blur-md">
-      <p className="text-sm font-medium">{label}</p>
+    <div className="mt-6 space-y-3 rounded-2xl border border-border bg-surface p-6 shadow-sm">
+      <p className="text-sm font-semibold text-foreground">{label}</p>
       <AudioPlayer src={url} />
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={download}
-          className="lift sheen gradient-accent rounded-xl px-4 py-2 text-sm font-semibold text-white shadow-[0_0_16px_var(--accent-glow)] hover:shadow-[0_0_26px_var(--accent-glow)]"
+          className="lift gradient-accent inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold text-white"
         >
-          ⬇ Download MP3
+          <Download size={15} /> Download MP3
         </button>
         <button
           onClick={copyLink}
-          className="lift rounded-xl border border-border px-4 py-2 text-sm font-medium hover:border-accent/50 hover:bg-surface-2"
+          className="lift rounded-xl border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-surface-2"
         >
           Copy link
         </button>
@@ -50,7 +51,7 @@ export default function ResultPanel({
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sm text-accent-2 underline-offset-4 hover:underline"
+          className="px-1 text-sm font-medium text-accent-2 hover:underline"
         >
           Open in new tab
         </a>

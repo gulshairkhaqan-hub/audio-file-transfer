@@ -8,7 +8,9 @@ import {
   useContext,
   useRef,
   useState,
+  type ComponentType,
 } from "react";
+import { Check, AlertTriangle, Info } from "@/components/icons";
 
 type ToastKind = "success" | "error" | "info";
 type Toast = { id: number; kind: ToastKind; message: string };
@@ -21,16 +23,17 @@ type ToastCtx = {
 
 const Ctx = createContext<ToastCtx | null>(null);
 
-const ICON: Record<ToastKind, string> = {
-  success: "✅",
-  error: "⚠️",
-  info: "💬",
+const ICON: Record<ToastKind, ComponentType<{ size?: number }>> = {
+  success: Check,
+  error: AlertTriangle,
+  info: Info,
 };
 
-const ACCENT: Record<ToastKind, string> = {
-  success: "border-green-500/40",
-  error: "border-red-500/40",
-  info: "border-accent/40",
+// Coloured icon chip per kind — the only colour on an otherwise white toast.
+const TONE: Record<ToastKind, string> = {
+  success: "bg-green-50 text-green-700",
+  error: "bg-red-50 text-red-600",
+  info: "bg-accent/10 text-accent-2",
 };
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -57,16 +60,21 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <Ctx.Provider value={{ toast, success, error }}>
       {children}
       <div className="pointer-events-none fixed bottom-5 right-5 z-50 flex flex-col gap-2">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            onClick={() => remove(t.id)}
-            className={`toast-in pointer-events-auto flex max-w-xs cursor-pointer items-center gap-2.5 rounded-xl border ${ACCENT[t.kind]} bg-surface/90 px-4 py-3 text-sm text-foreground shadow-2xl backdrop-blur-md`}
-          >
-            <span className="text-base">{ICON[t.kind]}</span>
-            <span>{t.message}</span>
-          </div>
-        ))}
+        {toasts.map((t) => {
+          const Icon = ICON[t.kind];
+          return (
+            <div
+              key={t.id}
+              onClick={() => remove(t.id)}
+              className="toast-in pointer-events-auto flex max-w-xs cursor-pointer items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm text-foreground shadow-lg"
+            >
+              <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${TONE[t.kind]}`}>
+                <Icon size={15} />
+              </span>
+              <span>{t.message}</span>
+            </div>
+          );
+        })}
       </div>
     </Ctx.Provider>
   );

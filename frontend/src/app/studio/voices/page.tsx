@@ -10,6 +10,7 @@ import { useVoices, voiceTier } from "@/lib/useVoices";
 import { useFavourites } from "@/lib/favourites";
 import { VoicePhotoBanner, HdBadge } from "@/components/VoiceAvatar";
 import { VoicePreviewButton } from "@/components/VoicePreviewButton";
+import { Grid, Search, ArrowRight } from "@/components/icons";
 
 export const PICK_VOICE_KEY = "voxclone_pick_voice";
 
@@ -56,21 +57,29 @@ export default function VoicesPage() {
 
   return (
     <div className="mx-auto max-w-5xl fade-up">
-      <h1 className="text-2xl font-semibold tracking-tight">🎭 Voice Library</h1>
-      <p className="mt-1 text-sm text-muted">
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-2 text-accent">
+          <Grid size={20} />
+        </span>
+        <h1 className="text-2xl font-bold tracking-tight">Voice Library</h1>
+      </div>
+      <p className="mt-2 text-sm text-muted">
         {voices.length > 0 ? `${voices.length} ` : ""}studio voices across
         multiple languages and accents. Preview the vibe, then use one in
         Generate.
       </p>
 
       {/* ── Search + filter chips ── */}
-      <div className="mt-6 space-y-3">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search voices…"
-          className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-2.5 text-sm outline-none placeholder:text-muted/50"
-        />
+      <div className="mt-8 space-y-3">
+        <div className="relative">
+          <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search voices…"
+            className="field w-full rounded-lg border border-transparent bg-surface-2 py-2.5 pl-10 pr-4 text-sm outline-none placeholder:text-muted/60"
+          />
+        </div>
         <div className="flex flex-wrap gap-1.5">
           <Chip
             active={
@@ -118,7 +127,7 @@ export default function VoicesPage() {
       {/* ── Grid ── */}
       <div className="mt-6">
         {error ? (
-          <div className="card-hover rounded-2xl border border-white/10 bg-surface/80 p-8 text-center shadow-2xl backdrop-blur-md">
+          <div className="rounded-2xl border border-border bg-surface p-8 text-center shadow-sm">
             <p className="text-sm text-muted">
               Couldn&apos;t load voices — the backend may be starting up.
               Refresh in a minute.
@@ -127,30 +136,29 @@ export default function VoicesPage() {
         ) : loading ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-24 animate-pulse rounded-2xl border border-white/5 bg-surface/60"
-              />
+              <div key={i} className="h-64 animate-pulse rounded-2xl border border-border bg-surface-2" />
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="card-hover rounded-2xl border border-white/10 bg-surface/80 p-10 text-center shadow-2xl backdrop-blur-md">
-            <div className="text-3xl">🔍</div>
-            <p className="mt-2 text-sm text-foreground">
+          <div className="rounded-2xl border border-border bg-surface p-10 text-center shadow-sm">
+            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-surface-2 text-accent">
+              <Search size={22} />
+            </span>
+            <p className="mt-3 text-sm font-medium text-foreground">
               No voices match your filters.
             </p>
           </div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((v) => (
               <div
                 key={v.id}
-                className="card-hover flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-surface/80 shadow-xl backdrop-blur-md"
+                className="card-hover flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm"
               >
                 {/* Photo banner — scrim keeps the favourite star legible on any photo */}
                 <div className="relative">
                   <VoicePhotoBanner voice={v} className="aspect-[4/3] w-full" />
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
                   {/* Center play button — hear the voice before generating */}
                   <div className="absolute inset-0 flex items-center justify-center">
                     <VoicePreviewButton voiceId={v.id} size={52} className="shadow-lg" />
@@ -167,7 +175,7 @@ export default function VoicesPage() {
                     className={`absolute right-2 top-2 rounded-full bg-black/40 px-2 py-1 text-lg leading-none backdrop-blur-sm transition-colors ${
                       isFavourite(v.id)
                         ? "text-yellow-400"
-                        : "text-white/70 hover:text-white"
+                        : "text-white/80 hover:text-white"
                     }`}
                   >
                     {isFavourite(v.id) ? "★" : "☆"}
@@ -183,9 +191,9 @@ export default function VoicesPage() {
                   </p>
                   <button
                     onClick={() => selectVoice(v.id)}
-                    className="lift mt-4 rounded-xl border border-border py-2 text-xs font-medium text-foreground hover:border-accent/50 hover:bg-surface-2"
+                    className="lift mt-4 inline-flex items-center justify-center gap-1.5 rounded-xl border border-border py-2 text-xs font-medium text-foreground hover:bg-surface-2"
                   >
-                    Use in Generate →
+                    Use in Generate <ArrowRight size={14} />
                   </button>
                 </div>
               </div>
@@ -194,7 +202,7 @@ export default function VoicesPage() {
         )}
 
         {!loading && !error && filtered.length > 0 && (
-          <p className="mt-4 text-center text-xs text-muted">
+          <p className="mt-5 text-center text-xs text-muted">
             {filtered.length} of {voices.length} voices
           </p>
         )}
@@ -219,7 +227,7 @@ function Chip({
       className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
         active
           ? "gradient-accent text-white"
-          : "border border-border bg-surface-2 text-muted hover:text-foreground"
+          : "border border-border bg-surface text-muted hover:text-foreground"
       }`}
     >
       {children}

@@ -78,7 +78,7 @@ export default function AudioPlayer({ src }: { src: string }) {
       <button
         onClick={toggle}
         aria-label={playing ? "Pause" : "Play"}
-        className="lift gradient-accent flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white shadow-[0_0_16px_var(--accent-glow)]"
+        className="lift flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-white"
       >
         {playing ? (
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">

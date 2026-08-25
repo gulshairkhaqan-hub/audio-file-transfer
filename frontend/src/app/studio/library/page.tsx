@@ -11,6 +11,7 @@ import { useToast } from "@/components/Toast";
 import AudioPlayer from "@/components/AudioPlayer";
 import { KIND_ORDER, KINDS, kindMeta } from "@/lib/kinds";
 import { downloadAudio, toAudioFilename } from "@/lib/download";
+import { Library as LibraryIcon, Download, Trash, Search, Sparkle } from "@/components/icons";
 
 type Filter = "all" | "clone" | "generate" | "mix";
 
@@ -83,28 +84,34 @@ export default function LibraryPage() {
 
   return (
     <div className="mx-auto max-w-4xl fade-up">
-      <h1 className="text-2xl font-semibold tracking-tight">📚 My Library</h1>
-      <p className="mt-1 text-sm text-muted">
+      <PageHeading />
+      <p className="mt-2 text-sm text-muted">
         Every voice you&apos;ve created — play, download, or share any of them.
       </p>
 
       {/* ── Search + filter tabs ── */}
-      <div className="mt-6 space-y-3">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search by name…"
-          className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-2.5 text-sm outline-none placeholder:text-muted/50"
-        />
+      <div className="mt-8 space-y-3">
+        <div className="relative">
+          <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by name…"
+            className="field w-full rounded-lg border border-border bg-surface py-2.5 pl-10 pr-4 text-sm outline-none placeholder:text-muted/60"
+          />
+        </div>
         <div className="flex flex-wrap gap-1.5">
           <Tab active={filter === "all"} onClick={() => setFilter("all")}>
             All · {items.length}
           </Tab>
-          {KIND_ORDER.map((k) => (
-            <Tab key={k} active={filter === k} onClick={() => setFilter(k)}>
-              {KINDS[k].icon} {KINDS[k].label} · {counts[k]}
-            </Tab>
-          ))}
+          {KIND_ORDER.map((k) => {
+            const { Icon, label } = KINDS[k];
+            return (
+              <Tab key={k} active={filter === k} onClick={() => setFilter(k)}>
+                <Icon size={14} /> {label} · {counts[k]}
+              </Tab>
+            );
+          })}
         </div>
       </div>
 
@@ -113,21 +120,16 @@ export default function LibraryPage() {
         {loading ? (
           <div className="space-y-3">
             {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="h-28 animate-pulse rounded-2xl border border-white/5 bg-surface/60"
-              />
+              <div key={i} className="h-28 animate-pulse rounded-2xl border border-border bg-surface-2" />
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="card-hover rounded-2xl border border-white/10 bg-surface/80 p-10 text-center shadow-2xl backdrop-blur-md">
-            <div className="text-3xl">
-              {items.length === 0 ? "✨" : "🔍"}
-            </div>
-            <p className="mt-2 text-sm text-foreground">
-              {items.length === 0
-                ? "Nothing here yet."
-                : "No results match your filters."}
+          <div className="rounded-2xl border border-border bg-surface p-10 text-center shadow-sm">
+            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-surface-2 text-accent">
+              {items.length === 0 ? <Sparkle size={22} /> : <Search size={22} />}
+            </span>
+            <p className="mt-3 text-sm font-medium text-foreground">
+              {items.length === 0 ? "Nothing here yet." : "No results match your filters."}
             </p>
             <p className="mt-1 text-xs text-muted">
               {items.length === 0
@@ -138,42 +140,38 @@ export default function LibraryPage() {
         ) : (
           <div className="space-y-3">
             {filtered.map((item) => {
-              const meta = kindMeta(item.kind);
+              const { Icon, label } = kindMeta(item.kind);
               return (
                 <div
                   key={item.url}
-                  className="card-hover rounded-2xl border border-white/10 bg-surface/80 p-4 shadow-xl backdrop-blur-md"
+                  className="card-hover rounded-2xl border border-border bg-surface p-4 shadow-sm"
                 >
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-foreground">
-                        {item.name}
-                      </p>
+                      <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
                       {item.uploaded_at && (
                         <p className="text-xs text-muted">
                           {new Date(item.uploaded_at).toLocaleString()}
                         </p>
                       )}
                     </div>
-                    <span className="shrink-0 rounded-full bg-accent/15 px-2.5 py-1 text-[11px] font-medium text-accent-2">
-                      {meta.icon} {meta.label}
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-accent/10 px-2.5 py-1 text-[11px] font-medium text-accent-2">
+                      <Icon size={13} /> {label}
                     </span>
                   </div>
 
                   <AudioPlayer src={item.url} />
 
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     <button
-                      onClick={() =>
-                        downloadAudio(item.url, toAudioFilename(item.name))
-                      }
-                      className="lift rounded-xl border border-border px-3.5 py-1.5 text-xs font-medium hover:border-accent/50 hover:bg-surface-2"
+                      onClick={() => downloadAudio(item.url, toAudioFilename(item.name))}
+                      className="lift inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface-2"
                     >
-                      ⬇ Download
+                      <Download size={14} /> Download
                     </button>
                     <button
                       onClick={() => copyLink(item.url)}
-                      className="lift rounded-xl border border-border px-3.5 py-1.5 text-xs font-medium hover:border-accent/50 hover:bg-surface-2"
+                      className="lift rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-foreground hover:bg-surface-2"
                     >
                       Copy link
                     </button>
@@ -181,16 +179,16 @@ export default function LibraryPage() {
                       href={item.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs text-accent-2 underline-offset-4 hover:underline"
+                      className="px-1 text-xs font-medium text-accent-2 hover:underline"
                     >
                       Open in new tab
                     </a>
                     <button
                       onClick={() => handleDelete(item)}
                       disabled={deleting === item.url}
-                      className="lift ml-auto rounded-xl border border-red-500/30 px-3.5 py-1.5 text-xs font-medium text-red-300/90 hover:border-red-500/60 hover:bg-red-500/10 disabled:opacity-50"
+                      className="lift ml-auto inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
-                      {deleting === item.url ? "Deleting…" : "🗑 Delete"}
+                      <Trash size={14} /> {deleting === item.url ? "Deleting…" : "Delete"}
                     </button>
                   </div>
                 </div>
@@ -199,6 +197,17 @@ export default function LibraryPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function PageHeading() {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-2 text-accent">
+        <LibraryIcon size={20} />
+      </span>
+      <h1 className="text-2xl font-bold tracking-tight">My Library</h1>
     </div>
   );
 }
@@ -216,10 +225,10 @@ function Tab({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
         active
           ? "gradient-accent text-white"
-          : "border border-border bg-surface-2 text-muted hover:text-foreground"
+          : "border border-border bg-surface text-muted hover:text-foreground"
       }`}
     >
       {children}

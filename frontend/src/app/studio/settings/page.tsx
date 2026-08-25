@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/components/Toast";
+import { Settings as SettingsIcon, LogOut } from "@/components/icons";
 
 const MIN_PASSWORD = 6;
 
@@ -59,18 +60,25 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-2xl fade-up">
-      <h1 className="text-2xl font-semibold tracking-tight">⚙️ Settings</h1>
-      <p className="mt-1 text-sm text-muted">
+      <div className="flex items-center gap-3">
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-2 text-accent">
+          <SettingsIcon size={20} />
+        </span>
+        <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+      </div>
+      <p className="mt-2 text-sm text-muted">
         Manage your profile and account security.
       </p>
 
       {/* ── Profile ── */}
-      <section className="card-hover mt-6 rounded-2xl border border-white/10 bg-surface/80 p-6 shadow-2xl backdrop-blur-md">
-        <h2 className="text-xs uppercase tracking-widest text-muted">Profile</h2>
+      <section className="mt-6 rounded-2xl border border-border bg-surface p-6 shadow-sm">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
+          Profile
+        </h2>
         <div className="mt-4 flex items-center gap-4">
           <span
-            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-xl font-semibold text-white"
-            style={{ backgroundImage: "linear-gradient(135deg, #7c3aed, #2563eb)" }}
+            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-xl font-bold text-white"
+            style={{ backgroundImage: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}
           >
             {initial}
           </span>
@@ -84,8 +92,8 @@ export default function SettingsPage() {
       </section>
 
       {/* ── Change password ── */}
-      <section className="card-hover mt-5 rounded-2xl border border-white/10 bg-surface/80 p-6 shadow-2xl backdrop-blur-md">
-        <h2 className="text-xs uppercase tracking-widest text-muted">
+      <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
           Change password
         </h2>
         <form onSubmit={handleChangePassword} className="mt-4 space-y-4">
@@ -110,7 +118,7 @@ export default function SettingsPage() {
           <button
             type="submit"
             disabled={saving}
-            className="lift sheen gradient-accent flex items-center justify-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white shadow-[0_0_20px_var(--accent-glow)] hover:shadow-[0_0_32px_var(--accent-glow)] active:scale-[0.98] disabled:opacity-60"
+            className="lift gradient-accent flex items-center justify-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold text-white active:scale-[0.99] disabled:opacity-60"
           >
             {saving ? (
               <>
@@ -125,8 +133,10 @@ export default function SettingsPage() {
       </section>
 
       {/* ── Account ── */}
-      <section className="card-hover mt-5 rounded-2xl border border-white/10 bg-surface/80 p-6 shadow-2xl backdrop-blur-md">
-        <h2 className="text-xs uppercase tracking-widest text-muted">Account</h2>
+      <section className="mt-5 rounded-2xl border border-border bg-surface p-6 shadow-sm">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
+          Account
+        </h2>
         <div className="mt-4 flex items-center justify-between gap-4">
           <p className="text-sm text-muted">Sign out of VoxClone on this device.</p>
           <button
@@ -134,8 +144,9 @@ export default function SettingsPage() {
               logout();
               router.replace("/login");
             }}
-            className="lift shrink-0 rounded-xl border border-red-500/30 px-4 py-2 text-sm font-medium text-red-300/90 hover:border-red-500/60 hover:bg-red-500/10"
+            className="lift inline-flex shrink-0 items-center gap-2 rounded-xl border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
           >
+            <LogOut size={16} />
             Log out
           </button>
         </div>
@@ -158,7 +169,7 @@ function Field({
   const [show, setShow] = useState(false);
   return (
     <div className="space-y-1.5">
-      <label className="ml-1 text-xs uppercase tracking-widest text-muted">
+      <label className="ml-1 text-xs font-medium uppercase tracking-widest text-muted">
         {label}
       </label>
       <div className="relative">
@@ -168,7 +179,7 @@ function Field({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           autoComplete="off"
-          className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-2.5 pr-11 text-sm text-foreground outline-none placeholder:text-muted/50"
+          className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-2.5 pr-11 text-sm text-foreground outline-none placeholder:text-muted/60"
         />
         <button
           type="button"

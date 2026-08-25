@@ -1,14 +1,14 @@
 "use client";
 
-// Studio home — a real dashboard (was previously just a redirect to /clone).
-// Greets the user, summarises their activity, offers quick-action cards for
-// the three features, and shows their most recent creations with a link into
-// the full Library.
+// Studio home — a real dashboard. Greets the user, summarises their activity,
+// offers quick-action cards for the three features, and shows their most recent
+// creations with a link into the full Library.
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { api, type HistoryItem } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { KIND_ORDER, KINDS, kindMeta } from "@/lib/kinds";
+import { Waveform, Sparkle, ArrowRight } from "@/components/icons";
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -48,63 +48,61 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto max-w-5xl fade-up">
       {/* ── Greeting ── */}
-      <h1 className="text-2xl font-semibold tracking-tight">
-        Welcome back, <span className="gradient-text">{firstName}</span> 👋
+      <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+        Welcome back, <span className="gradient-text">{firstName}</span>
       </h1>
-      <p className="mt-1 text-sm text-muted">
+      <p className="mt-2 max-w-2xl text-sm text-muted">
         Create studio-quality speech — clone a voice, generate from 28 presets,
         or blend two into something new.
       </p>
 
       {/* ── Stats strip ── */}
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard label="Total creations" value={items.length} icon="🎵" big />
-        {KIND_ORDER.map((k) => (
-          <StatCard
-            key={k}
-            label={KINDS[k].label}
-            value={counts[k]}
-            icon={KINDS[k].icon}
-          />
-        ))}
+      <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard label="Total creations" value={items.length} icon={<Waveform size={18} />} big />
+        {KIND_ORDER.map((k) => {
+          const { Icon, label } = KINDS[k];
+          return (
+            <StatCard key={k} label={label} value={counts[k]} icon={<Icon size={18} />} />
+          );
+        })}
       </div>
 
       {/* ── Quick actions ── */}
-      <h2 className="mb-3 mt-9 text-sm font-semibold uppercase tracking-widest text-muted">
+      <h2 className="mb-3 mt-10 text-xs font-semibold uppercase tracking-widest text-muted">
         Start creating
       </h2>
       <div className="grid gap-4 sm:grid-cols-3">
         <ActionCard
           href={KINDS.clone.href}
-          icon={KINDS.clone.icon}
+          icon={<KINDS.clone.Icon size={20} />}
           title="Clone a voice"
           desc="Upload a ~20s sample and make it say anything."
         />
         <ActionCard
           href={KINDS.generate.href}
-          icon={KINDS.generate.icon}
+          icon={<KINDS.generate.Icon size={20} />}
           title="Generate speech"
           desc="Pick from 28 preset voices and type your script."
         />
         <ActionCard
           href={KINDS.mix.href}
-          icon={KINDS.mix.icon}
+          icon={<KINDS.mix.Icon size={20} />}
           title="Mix two voices"
           desc="Blend two voices into a brand-new one."
         />
       </div>
 
       {/* ── Recent creations ── */}
-      <div className="mb-3 mt-9 flex items-center justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-muted">
+      <div className="mb-3 mt-10 flex items-center justify-between">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-muted">
           Recent creations
         </h2>
         {items.length > 0 && (
           <Link
             href="/studio/library"
-            className="text-xs text-accent-2 underline-offset-4 hover:underline"
+            className="inline-flex items-center gap-1 text-xs font-medium text-accent-2 hover:underline"
           >
-            View all in Library →
+            View all <ArrowRight size={13} />
           </Link>
         )}
       </div>
@@ -112,22 +110,19 @@ export default function DashboardPage() {
       {loading ? (
         <div className="space-y-2">
           {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              className="h-14 animate-pulse rounded-xl border border-white/5 bg-surface/60"
-            />
+            <div key={i} className="h-16 animate-pulse rounded-xl border border-border bg-surface-2" />
           ))}
         </div>
       ) : recent.length === 0 ? (
-        <div className="card-hover rounded-2xl border border-white/10 bg-surface/80 p-8 text-center shadow-2xl backdrop-blur-md">
-          <div className="text-3xl">✨</div>
-          <p className="mt-2 text-sm text-foreground">No creations yet.</p>
-          <p className="mt-1 text-xs text-muted">
-            Your generated audio will show up here.
-          </p>
+        <div className="rounded-2xl border border-border bg-surface p-10 text-center shadow-sm">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-surface-2 text-accent">
+            <Sparkle size={22} />
+          </span>
+          <p className="mt-3 text-sm font-medium text-foreground">No creations yet.</p>
+          <p className="mt-1 text-xs text-muted">Your generated audio will show up here.</p>
           <Link
             href={KINDS.clone.href}
-            className="lift sheen gradient-accent mt-4 inline-flex rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-[0_0_16px_var(--accent-glow)]"
+            className="lift gradient-accent mt-5 inline-flex rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
           >
             Create your first voice
           </Link>
@@ -135,20 +130,20 @@ export default function DashboardPage() {
       ) : (
         <div className="space-y-2">
           {recent.map((item) => {
-            const meta = kindMeta(item.kind);
+            const { Icon, label } = kindMeta(item.kind);
             return (
               <div
                 key={item.url}
-                className="lift flex items-center justify-between gap-4 rounded-xl border border-white/5 bg-surface/60 px-4 py-3 backdrop-blur-sm hover:border-accent/30"
+                className="lift flex items-center justify-between gap-4 rounded-xl border border-border bg-surface px-4 py-3"
               >
                 <div className="flex min-w-0 items-center gap-3">
-                  <span className="text-lg">{meta.icon}</span>
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted">
+                    <Icon size={17} />
+                  </span>
                   <div className="min-w-0">
-                    <p className="truncate text-sm text-foreground">
-                      {item.name}
-                    </p>
+                    <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
                     <p className="text-xs text-muted">
-                      {meta.label}
+                      {label}
                       {item.uploaded_at &&
                         ` · ${new Date(item.uploaded_at).toLocaleDateString()}`}
                     </p>
@@ -158,7 +153,7 @@ export default function DashboardPage() {
                   href={item.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="shrink-0 text-xs text-accent-2 underline-offset-4 hover:underline"
+                  className="shrink-0 text-xs font-medium text-accent-2 hover:underline"
                 >
                   Open
                 </a>
@@ -179,22 +174,20 @@ function StatCard({
 }: {
   label: string;
   value: number;
-  icon: string;
+  icon: ReactNode;
   big?: boolean;
 }) {
   return (
     <div
-      className={`card-hover rounded-2xl border border-white/10 p-4 shadow-xl backdrop-blur-md ${
-        big ? "gradient-accent text-white" : "bg-surface/80"
+      className={`rounded-2xl border p-4 shadow-sm ${
+        big ? "gradient-accent border-transparent text-white" : "border-border bg-surface"
       }`}
     >
       <div className="flex items-center justify-between">
-        <span className={`text-xs ${big ? "text-white/80" : "text-muted"}`}>
-          {label}
-        </span>
-        <span className="text-base">{icon}</span>
+        <span className={`text-xs ${big ? "text-white/70" : "text-muted"}`}>{label}</span>
+        <span className={big ? "text-white/80" : "text-muted"}>{icon}</span>
       </div>
-      <div className="mt-2 text-2xl font-semibold tracking-tight">{value}</div>
+      <div className="mt-2 text-2xl font-bold tracking-tight">{value}</div>
     </div>
   );
 }
@@ -206,22 +199,22 @@ function ActionCard({
   desc,
 }: {
   href: string;
-  icon: string;
+  icon: ReactNode;
   title: string;
   desc: string;
 }) {
   return (
     <Link
       href={href}
-      className="card-hover group flex flex-col rounded-2xl border border-white/10 bg-surface/80 p-5 shadow-xl backdrop-blur-md"
+      className="card-hover lift group flex flex-col rounded-2xl border border-border bg-surface p-5 shadow-sm"
     >
-      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-accent/15 text-xl">
+      <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-surface-2 text-accent">
         {icon}
       </span>
-      <p className="mt-3 text-sm font-semibold text-foreground">{title}</p>
-      <p className="mt-1 flex-1 text-xs text-muted">{desc}</p>
-      <span className="mt-3 text-xs font-medium text-accent-2">
-        Open →
+      <p className="mt-4 text-sm font-semibold text-foreground">{title}</p>
+      <p className="mt-1 flex-1 text-xs leading-relaxed text-muted">{desc}</p>
+      <span className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-accent-2">
+        Open <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
       </span>
     </Link>
   );

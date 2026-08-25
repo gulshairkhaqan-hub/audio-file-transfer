@@ -11,6 +11,18 @@ import VoiceSelect from "@/components/VoiceSelect";
 import SpeedControl from "@/components/SpeedControl";
 import ResultPanel from "@/components/ResultPanel";
 import RecentList from "@/components/RecentList";
+import { Sliders, AlertTriangle } from "@/components/icons";
+
+function Heading() {
+  return (
+    <div className="flex items-center gap-3">
+      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-surface-2 text-accent">
+        <Sliders size={20} />
+      </span>
+      <h1 className="text-2xl font-bold tracking-tight">Voice Mixing</h1>
+    </div>
+  );
+}
 
 export default function MixPage() {
   const { success, error: toastError } = useToast();
@@ -67,8 +79,8 @@ export default function MixPage() {
   if (voicesError) {
     return (
       <div className="mx-auto max-w-3xl fade-up">
-        <h1 className="text-2xl font-semibold tracking-tight">🎛️ Voice Mixing</h1>
-        <div className="card-hover mt-6 rounded-2xl border border-white/10 bg-surface/80 p-6 text-center shadow-2xl backdrop-blur-md">
+        <Heading />
+        <div className="mt-6 rounded-2xl border border-border bg-surface p-6 text-center shadow-sm">
           <p className="text-sm text-muted">
             Couldn&apos;t load voices. The backend may be starting up — refresh in
             a minute.
@@ -83,19 +95,19 @@ export default function MixPage() {
 
   return (
     <div className="mx-auto max-w-3xl fade-up">
-      <h1 className="text-2xl font-semibold tracking-tight">🎛️ Voice Mixing</h1>
-      <p className="mt-1 text-sm text-muted">
+      <Heading />
+      <p className="mt-2 text-sm text-muted">
         Blend two voices into a new one — the slider controls how much of each
         you hear.
       </p>
 
       <form
         onSubmit={handleSubmit}
-        className="card-hover relative z-20 mt-6 space-y-5 rounded-2xl border border-white/10 bg-surface/80 p-6 shadow-2xl backdrop-blur-md"
+        className="relative z-20 mt-6 space-y-5 rounded-2xl border border-border bg-surface p-6 shadow-sm"
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
-            <label className="ml-1 text-xs uppercase tracking-widest text-muted">
+            <label className="ml-1 text-xs font-medium uppercase tracking-widest text-muted">
               Voice A
             </label>
             <VoiceSelect
@@ -108,7 +120,7 @@ export default function MixPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="ml-1 text-xs uppercase tracking-widest text-muted">
+            <label className="ml-1 text-xs font-medium uppercase tracking-widest text-muted">
               Voice B
             </label>
             <VoiceSelect
@@ -123,7 +135,7 @@ export default function MixPage() {
 
         <div className="space-y-2">
           <div className="flex items-center justify-between px-1">
-            <label className="text-xs uppercase tracking-widest text-muted">
+            <label className="text-xs font-medium uppercase tracking-widest text-muted">
               Blend
             </label>
             <span className="text-xs text-muted">
@@ -143,7 +155,8 @@ export default function MixPage() {
         </div>
 
         {sameVoice && (
-          <p className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 text-xs text-amber-300/90">
+          <p className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-700">
+            <AlertTriangle size={15} className="shrink-0" />
             Both slots use the same voice — pick two different ones to hear a
             blend.
           </p>
@@ -151,7 +164,7 @@ export default function MixPage() {
 
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <label className="ml-1 text-xs uppercase tracking-widest text-muted">
+            <label className="ml-1 text-xs font-medium uppercase tracking-widest text-muted">
               Text to speak
             </label>
             <span
@@ -168,7 +181,7 @@ export default function MixPage() {
             rows={4}
             maxLength={MAX_TEXT_CHARS}
             placeholder="Type what the mixed voice should say…"
-            className="field w-full rounded-xl border border-transparent bg-surface-2 px-4 py-3 text-sm text-foreground outline-none placeholder:text-muted/50"
+            className="field w-full resize-y rounded-xl border border-transparent bg-surface-2 px-4 py-3 text-sm text-foreground outline-none placeholder:text-muted/60"
           />
         </div>
 
@@ -177,7 +190,7 @@ export default function MixPage() {
         <button
           type="submit"
           disabled={loading || voicesLoading || voices.length === 0}
-          className="lift sheen gradient-accent flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white shadow-[0_0_20px_var(--accent-glow)] hover:shadow-[0_0_32px_var(--accent-glow)] active:scale-[0.98] disabled:opacity-60"
+          className="lift gradient-accent flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white active:scale-[0.99] disabled:opacity-60"
         >
           {loading ? (
             <>

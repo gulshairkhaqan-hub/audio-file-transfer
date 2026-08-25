@@ -136,7 +136,7 @@ export default function VoiceSelect({
 
       {/* Panel */}
       {open && (
-        <div className="fade-up absolute z-30 mt-2 w-full overflow-hidden rounded-xl border border-white/10 bg-surface shadow-2xl backdrop-blur-md">
+        <div className="fade-up absolute z-30 mt-2 w-full overflow-hidden rounded-xl border border-border bg-surface shadow-lg">
           <div className="border-b border-border p-2.5">
             <input
               ref={searchRef}

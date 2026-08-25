@@ -60,7 +60,7 @@ export default function RecentList({
         {items.slice(0, limit).map((item) => (
           <div
             key={item.url}
-            className="lift flex items-center justify-between gap-4 rounded-xl border border-white/5 bg-surface/60 px-4 py-3 backdrop-blur-sm hover:border-accent/30"
+            className="lift flex items-center justify-between gap-4 rounded-xl border border-border bg-surface px-4 py-3 hover:border-foreground/20"
           >
             <div className="min-w-0">
               <p className="truncate text-sm text-foreground">{item.name}</p>
